@@ -1,26 +1,77 @@
 @import "tailwindcss";
 
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  /* Global Colors */
+  --background: #f0fdf4; /* Very light green tint background */
+  --foreground: #022c22; /* Very dark green text */
+  
+  /* NU Theme Colors */
+  --primary: #0B6B3A; /* Hijau Tua */
+  --primary-foreground: #ffffff;
+  
+  --secondary: #1FA463; /* Hijau Zamrud */
+  --secondary-foreground: #ffffff;
+  
+  --accent: #F59E0B; /* Gold/Amber */
+  --accent-foreground: #ffffff;
+  
+  --muted: #f1f5f9;
+  --muted-foreground: #64748b;
+  
+  --border: #e2e8f0;
 }
 
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
+  
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  
+  --color-border: var(--border);
+
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
+  
+  /* Glassmorphism Utilities */
+  --backdrop-blur-glass: 12px;
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+/* Custom Glassmorphism Classes */
+.glass {
+  background: rgba(255, 255, 255, 0.7);
+  backdrop-filter: blur(var(--backdrop-blur-glass));
+  -webkit-backdrop-filter: blur(var(--backdrop-blur-glass));
+  border: 1px solid rgba(255, 255, 255, 0.5);
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05), 0 2px 4px -1px rgba(0, 0, 0, 0.03);
+}
+
+.glass-dark {
+  background: rgba(11, 107, 58, 0.85); /* Primary color glass */
+  backdrop-filter: blur(var(--backdrop-blur-glass));
+  -webkit-backdrop-filter: blur(var(--backdrop-blur-glass));
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  color: white;
 }
 
 body {
   background: var(--background);
   color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  font-family: var(--font-sans), sans-serif;
+  /* Add a subtle gradient mesh background */
+  background-image: 
+    radial-gradient(at 0% 0%, hsla(142, 69%, 90%, 1) 0px, transparent 50%),
+    radial-gradient(at 100% 0%, hsla(142, 70%, 94%, 1) 0px, transparent 50%),
+    radial-gradient(at 100% 100%, hsla(142, 60%, 90%, 1) 0px, transparent 50%),
+    radial-gradient(at 0% 100%, hsla(142, 70%, 94%, 1) 0px, transparent 50%);
+  background-attachment: fixed;
 }
