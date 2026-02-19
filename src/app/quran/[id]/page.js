@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react";
 import { useParams } from "next/navigation";
 import { getSurah } from "@/lib/quran-api";
+import { AnimatePresence, motion } from "framer-motion";
 import { Play, Pause, Heart, Copy, ChevronLeft, ArrowLeft, Bookmark, BookOpen, GraduationCap } from "lucide-react";
 import Link from "next/link";
 import { cn } from "@/lib/utils";
@@ -123,23 +124,33 @@ export default function SurahDetail() {
                     </button>
                 </div>
 
-                {/* Progress Bar */}
-                {mode !== "read" && (
-                    <div className="flex flex-col gap-1 animate-in fade-in slide-in-from-top-2 duration-500">
-                        <div className="flex justify-between items-center text-[10px] text-muted-foreground font-medium px-0.5">
-                            <span>{memorizedCount} / {data.numberOfAyahs} Ayat</span>
-                            <span>{progress}% Hafal</span>
-                        </div>
-                        <div className="w-full bg-black/5 h-2 rounded-full overflow-hidden relative">
-                            <div
-                                className="h-full bg-linear-to-r from-primary to-accent transition-all duration-1000 ease-out rounded-full relative"
-                                style={{ width: `${progress}%` }}
-                            >
-                                <div className="absolute inset-0 bg-white/30 animate-[shimmer_2s_infinite]"></div>
+                {/* Progress Bar with Slide Animation */}
+                <AnimatePresence>
+                    {mode === "practice" && (
+                        <motion.div
+                            initial={{ height: 0, opacity: 0, marginTop: 0 }}
+                            animate={{ height: "auto", opacity: 1, marginTop: 4 }}
+                            exit={{ height: 0, opacity: 0, marginTop: 0 }}
+                            transition={{ duration: 0.4, ease: [0.04, 0.62, 0.23, 0.98] }}
+                            className="overflow-hidden"
+                        >
+                            <div className="flex flex-col gap-1.5 pb-1">
+                                <div className="flex justify-between items-center text-[10px] text-muted-foreground font-medium px-0.5">
+                                    <span>{memorizedCount} / {data.numberOfAyahs} Ayat</span>
+                                    <span>{progress}% Hafal</span>
+                                </div>
+                                <div className="w-full bg-black/5 h-2 rounded-full overflow-hidden relative">
+                                    <div
+                                        className="h-full bg-linear-to-r from-primary to-accent transition-all duration-1000 ease-out rounded-full relative"
+                                        style={{ width: `${progress}%` }}
+                                    >
+                                        <div className="absolute inset-0 bg-white/30 animate-[shimmer_2s_infinite]"></div>
+                                    </div>
+                                </div>
                             </div>
-                        </div>
-                    </div>
-                )}
+                        </motion.div>
+                    )}
+                </AnimatePresence>
             </div>
 
             <main className="px-4 pt-6 max-w-md mx-auto">

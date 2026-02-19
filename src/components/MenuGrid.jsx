@@ -14,7 +14,7 @@ const menuItems = [
 
 export default function MenuGrid() {
     return (
-        <div className="grid grid-cols-5 gap-2 mb-6">
+        <div className="grid grid-cols-5 gap-2 mb-4 p-3 glass bg-white shadow-md rounded-2xl">
             {menuItems.map((item) => (
                 <Link key={item.label} href={item.path} className="flex justify-center">
                     <button

@@ -1,7 +1,7 @@
 "use client";
 
 import { Share2, Copy } from "lucide-react";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 
 const QUOTES = [
     { text: "Maka sesungguhnya bersama kesulitan ada kemudahan.", source: "QS. Al-Insyirah: 5" },
@@ -11,7 +11,17 @@ const QUOTES = [
 ];
 
 export default function InspirationCard() {
-    const [quote] = useState(QUOTES[Math.floor(Math.random() * QUOTES.length)]);
+    const [mounted, setMounted] = useState(false);
+    const [quote, setQuote] = useState(QUOTES[0]);
+
+    useEffect(() => {
+        setMounted(true);
+        setQuote(QUOTES[Math.floor(Math.random() * QUOTES.length)]);
+    }, []);
+
+    if (!mounted) {
+        return <div className="glass-dark rounded-2xl p-6 mb-6 h-40 animate-pulse" />;
+    }
 
     return (
         <div className="glass-dark rounded-2xl p-6 relative overflow-hidden mb-6 group hover:shadow-lg transition-all">

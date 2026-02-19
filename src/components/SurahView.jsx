@@ -44,10 +44,10 @@ export default function SurahView({ surahNumber }) {
     return (
         <div className="flex flex-col gap-6 pb-24">
             {/* Surah Header */}
-            <div className="bg-gradient-to-br from-primary to-secondary rounded-2xl p-6 text-center text-white relative overflow-hidden shadow-lg">
+            <div className="bg-linear-to-br from-primary to-secondary rounded-2xl p-6 text-center text-white relative overflow-hidden shadow-lg">
                 <h1 className="text-3xl font-bold mb-1">{data.englishName}</h1>
                 <p className="opacity-90">{data.englishNameTranslation}</p>
-                <div className="h-[1px] w-20 bg-white/30 mx-auto my-3"></div>
+                <div className="h-px w-20 bg-white/30 mx-auto my-3"></div>
                 <p className="text-xs uppercase tracking-widest opacity-80">{data.revelationType} • {data.numberOfAyahs} Ayat</p>
 
                 {/* Bismillah (except for At-Tawbah/9) */}
@@ -91,7 +91,7 @@ export default function SurahView({ surahNumber }) {
                         </div>
 
                         {/* Arabic Text */}
-                        <p className="text-right font-amiri text-2xl/loose mb-4 text-foreground break-words" dir="rtl">
+                        <p className="text-right font-amiri text-2xl/loose mb-4 text-foreground wrap-break-word" dir="rtl">
                             {ayah.text}
                         </p>
 
