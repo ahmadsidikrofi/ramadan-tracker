@@ -13,6 +13,12 @@ const categories = [
     { id: "Harian", label: "Harian" },
     { id: "Keluarga", label: "Keluarga" },
     { id: "Lailatul Qadar", label: "Lailatul Qadar" },
+    { id: "Pernikahan", label: "Pernikahan" },
+    { id: "Wudhu", label: "Wudhu" },
+    { id: "Masuk Kamar Mandi", label: "Kamar Mandi" },
+    { id: "Tidur", label: "Tidur" },
+    { id: "Berpakaian", label: "Berpakaian" },
+    { id: "Doa ketika Sakit", label: "Sakit" },
     { id: "Lainnya", label: "Lainnya" }
 ];
 
@@ -25,33 +31,46 @@ export default function DoaPage() {
     useEffect(() => {
         async function fetchPrayers() {
             try {
-                const res = await fetch("https://api.myquran.com/v1/doa/all");
-                const data = await res.json();
+                const res = await fetch("https://equran.id/api/doa");
+                const result = await res.json();
 
-                if (data && data.data) {
-                    const mapped = data.data.map((item, index) => {
+                if (result && result.data) {
+                    const mapped = result.data.map((item) => {
                         let category = "Lainnya";
-                        const title = item.judul.toLowerCase();
-                        const source = item.source.toLowerCase();
+                        const title = (item.nama || "").toLowerCase();
+                        const grup = (item.grup || "").toLowerCase();
+                        const tags = (item.tag || []).map(t => t.toLowerCase());
 
-                        // Classification Logic
-                        if (title.includes("lailatul qadar")) {
+                        // Better Classification Logic for equran.id API structure
+                        if (title.includes("lailatul qadar") || title.includes("lailatul")) {
                             category = "Lailatul Qadar";
-                        } else if (title.includes("ramadhan") || title.includes("ramadan") || title.includes("puasa") || title.includes("buka") || title.includes("sahur") || title.includes("tarawih") || title.includes("witir")) {
+                        } else if (title.includes("bulan ramadhan") || title.includes("ramadan") || title.includes("puasa") || title.includes("buka puasa") || title.includes("sahur") || title.includes("tarawih") || title.includes("zakat fitrah")) {
                             category = "Ramadan";
-                        } else if (title.includes("orang tua") || title.includes("ayah") || title.includes("ibu") || title.includes("anak") || title.includes("keluarga") || title.includes("istri") || title.includes("suami") || title.includes("jodoh") || title.includes("nikah")) {
+                        } else if (grup.includes("wudhu") || tags.includes("wudhu")) {
+                            category = "Wudhu";
+                        } else if (grup.includes("kamar mandi") || tags.includes("kamar mandi") || title.includes("toilet") || title.includes("buang hajat")) {
+                            category = "Masuk Kamar Mandi";
+                        } else if (grup.includes("tidur") || tags.includes("tidur")) {
+                            category = "Tidur";
+                        } else if (grup.includes("pakaian") || tags.includes("pakaian") || grup.includes("berpakaian")) {
+                            category = "Berpakaian";
+                        } else if (grup.includes("sakit") || tags.includes("sakit") || grup.includes("penyakit") || title.includes("sakit")) {
+                            category = "Doa ketika Sakit";
+                        } else if (grup.includes("pernikahan") || title.includes("pengantin") || title.includes("bersetubuh") || title.includes("pengantin")) {
+                            category = "Pernikahan";
+                        } else if (grup.includes("orang tua") || grup.includes("keluarga") || title.includes("ayah") || title.includes("ibu") || title.includes("anak") || title.includes("keturunan")) {
                             category = "Keluarga";
-                        } else if (source === "harian" || title.includes("tidur") || title.includes("bangun") || title.includes("makan") || title.includes("masuk") || title.includes("keluar") || title.includes("pakaian") || title.includes("wc") || title.includes("cermin") || title.includes("kendaraan") || title.includes("bepergian") || title.includes("rumah") || title.includes("masjid") || title.includes("pasar")) {
+                        } else if (grup.includes("perjalanan") || title.includes("kendaraan") || title.includes("bepergian") || grup.includes("harian") || title.includes("makan") || title.includes("masjid") || title.includes("rumah") || title.includes("keluar") || title.includes("masuk")) {
                             category = "Harian";
                         }
 
                         return {
-                            id: item.id || `api-${index}`,
-                            title: item.judul,
-                            arabic: item.doa,
-                            transliteration: item.latin, // Often empty from API
-                            translation: item.artinya,
-                            source: item.source,
+                            id: item.id,
+                            title: item.nama,
+                            arabic: item.ar,
+                            transliteration: item.tr,
+                            translation: item.idn,
+                            source: item.tentang,
                             category: category
                         };
                     });

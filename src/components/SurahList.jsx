@@ -50,15 +50,15 @@ export default function SurahList() {
             </div>
 
             {/* List */}
-            <div className="grid gap-3 pb-24">
+            <div className="grid gap-3 pb-0">
                 {filteredSurahs.map((surah) => (
                     <Link href={`/quran/${surah.number}`} key={surah.number}>
-                        <div className="glass rounded-xl p-6 flex items-center justify-between group hover:bg-white/60 transition-colors cursor-pointer">
+                        <div className="rounded-xl p-6 flex items-center justify-between shadow-md group bg-white hover:glass hover:bg-white/20 transition-colors cursor-pointer">
                             <div className="flex items-center gap-4">
                                 <div className="relative w-10 h-10 flex items-center justify-center">
                                     {/* Geometric Star/Number Container */}
-                                    <div className="absolute inset-0 bg-primary/10 rotate-45 rounded-sm group-hover:rotate-0 group-hover:bg-primary transition-transform duration-500"></div>
-                                    <span className="relative z-10 font-bold text-sm text-primary group-hover:text-white transition-colors duration-500">{surah.number}</span>
+                                    <div className="absolute inset-0 bg-primary/10 rotate-45 rounded-sm group-hover:rotate-0 group-hover:bg-primary transition-transform duration-300"></div>
+                                    <span className="relative z-10 font-bold text-sm text-primary group-hover:text-white transition-colors duration-300">{surah.number}</span>
                                 </div>
                                 <div>
                                     <h3 className="font-bold text-foreground group-hover:text-primary">{surah.englishName}</h3>

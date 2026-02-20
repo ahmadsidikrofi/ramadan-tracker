@@ -45,14 +45,14 @@ export default function Home() {
             <ReadingCard />
           </section>
 
-          {/* Consistency */}
-          <section>
-            <ConsistencyCard />
-          </section>
-
           {/* Inspiration */}
           <section>
             <InspirationCard />
+          </section>
+
+          {/* Consistency */}
+          <section>
+            <ConsistencyCard />
           </section>
 
           {/* Journal */}
