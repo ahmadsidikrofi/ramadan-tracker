@@ -35,9 +35,9 @@ export default function BottomNav() {
             <AnimatePresence>
                 {isScrolled && (
                     <motion.nav
-                        initial={{ y: 100, opacity: 0, scale: 0.9 }}
+                        initial={{ y: 100, opacity: 0, scale: 0.4 }}
                         animate={{ y: 0, opacity: 1, scale: 1 }}
-                        exit={{ y: 100, opacity: 0, scale: 0.9 }}
+                        exit={{ y: 100, opacity: 0, scale: 0.4 }}
                         transition={{ type: "spring", stiffness: 260, damping: 20 }}
                         className={cn(
                             "w-full max-w-sm bg-white pointer-events-auto",
