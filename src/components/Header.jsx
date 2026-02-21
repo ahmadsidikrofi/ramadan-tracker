@@ -14,12 +14,32 @@ export default function Header() {
         setMasehiDate(format(today, "EEEE, d MMM yyyy"));
 
         try {
-            const formattedHijri = new Intl.DateTimeFormat('id-TN-u-ca-islamic', {
+            const parts = new Intl.DateTimeFormat('en-US-u-ca-islamic', {
                 day: 'numeric',
-                month: 'long',
+                month: 'numeric',
                 year: 'numeric'
-            }).format(today);
-            setHijriDate(formattedHijri);
+            }).formatToParts(today);
+
+            const day = parts.find(p => p.type === 'day')?.value;
+            const monthStr = parts.find(p => p.type === 'month')?.value;
+            const yearStr = parts.find(p => p.type === 'year')?.value;
+
+            const monthIndex = parseInt(monthStr, 10) - 1;
+            const monthNames = [
+                "Muharram", "Safar", "Rabi'ul Awal", "Rabi'ul Akhir",
+                "Jumadil Awal", "Jumadil Akhir", "Rajab", "Sya'ban",
+                "Ramadan", "Syawal", "Dzulqa'dah", "Dzulhijjah"
+            ];
+
+            // Extract the digits (some implementations return '1447 AH' instead of just '1447')
+            const yearMatch = yearStr?.match(/\d+/);
+            const year = yearMatch ? yearMatch[0] : "1447";
+
+            if (day && monthIndex >= 0 && monthIndex < 12) {
+                setHijriDate(`${day} ${monthNames[monthIndex]} ${year} H`);
+            } else {
+                setHijriDate("1 Ramadan 1447 H");
+            }
         } catch (e) {
             setHijriDate("1 Ramadan 1447 H");
         }

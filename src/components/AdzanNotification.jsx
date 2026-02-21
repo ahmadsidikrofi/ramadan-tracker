@@ -84,27 +84,44 @@ export default function AdzanNotification({ prayerToday }) {
     }, [prayerToday, notifEnabled, soundEnabled]);
 
     const handleNotifToggle = async () => {
-        if (!("Notification" in window)) {
-            alert("Browser ini tidak mendukung notifikasi.");
+        if (!("Notification" in window) || window.Notification.permission === "denied") {
+            // Open settings directly if not supported or denied
+            setIsSettingsModalOpen(true);
             return;
         }
 
-        const permission = await Notification.requestPermission();
-        if (permission === "granted") {
-            setNotifEnabled(true);
-            setSoundEnabled(true); // default on 
-            localStorage.setItem("ramadan-notif", "true");
-            localStorage.setItem("ramadan-sound", "true");
-        } else {
-            alert("Izin notifikasi ditolak. Anda tidak akan menerima notifikasi suara.");
+        try {
+            const permission = await Notification.requestPermission();
+            if (permission === "granted") {
+                setNotifEnabled(true);
+                setSoundEnabled(true);
+                localStorage.setItem("ramadan-notif", "true");
+                localStorage.setItem("ramadan-sound", "true");
+            } else {
+                setIsSettingsModalOpen(true);
+            }
+        } catch (e) {
+            setIsSettingsModalOpen(true);
         }
     };
 
-    const toggleSettingsNotif = (checked) => {
-        setNotifEnabled(checked);
-        localStorage.setItem("ramadan-notif", checked.toString());
-        if (checked && Notification.permission !== "granted") {
-            Notification.requestPermission();
+    const toggleSettingsNotif = async (checked) => {
+        if (checked && "Notification" in window) {
+            if (window.Notification.permission === "granted") {
+                setNotifEnabled(true);
+                localStorage.setItem("ramadan-notif", "true");
+            } else if (window.Notification.permission !== "denied") {
+                const permission = await Notification.requestPermission();
+                if (permission === "granted") {
+                    setNotifEnabled(true);
+                    localStorage.setItem("ramadan-notif", "true");
+                }
+            } else {
+                alert("Izin notifikasi telah diblokir di setelan browser.");
+            }
+        } else {
+            setNotifEnabled(false);
+            localStorage.setItem("ramadan-notif", "false");
         }
     };
 
@@ -118,24 +135,22 @@ export default function AdzanNotification({ prayerToday }) {
             {/* Notification Bar */}
             <AnimatePresence>
                 <div className="mt-4 flex flex-col gap-3">
-                    {!notifEnabled && typeof window !== "undefined" && window.Notification?.permission !== "denied" && (
+                    {!notifEnabled ? (
                         <div className="flex items-center justify-between bg-accent/20 border border-accent/30 rounded-2xl p-4 animate-in fade-in zoom-in-95 duration-300">
                             <div className="flex items-center gap-3 text-left">
                                 <div className="p-2 bg-accent/30 rounded-full text-white">
                                     <Bell size={18} />
                                 </div>
                                 <div>
-                                    <h4 className="text-sm font-bold text-white">Notifikasi Adzan</h4>
-                                    <p className="text-xs text-white/80">Aktifkan pengingat 5 waktu</p>
+                                    <h4 className="text-sm font-bold text-white">Pengaturan Adzan</h4>
+                                    <p className="text-xs text-white/80">Atur suara dan notifikasi</p>
                                 </div>
                             </div>
                             <button onClick={handleNotifToggle} className="px-3 py-1.5 bg-accent hover:bg-accent/80 text-white rounded-full text-xs font-bold transition-all shadow-md active:scale-95">
-                                Aktifkan
+                                Atur Sekarang
                             </button>
                         </div>
-                    )}
-
-                    {notifEnabled && (
+                    ) : (
                         <div className="flex items-center justify-between bg-white/10 backdrop-blur-md border border-white/20 rounded-2xl p-4 cursor-pointer hover:bg-white/15 transition-colors animate-in fade-in" onClick={() => setIsSettingsModalOpen(true)}>
                             <div className="flex items-center gap-3 text-left">
                                 <div className="p-2 bg-white/20 rounded-full text-white relative">
@@ -186,14 +201,18 @@ export default function AdzanNotification({ prayerToday }) {
                                         <span className="font-semibold text-sm text-foreground">Notifikasi Shalat</span>
                                         <span className="text-xs text-muted-foreground">Tampilkan saat masuk waktu shalat</span>
                                     </div>
-                                    <Switch checked={notifEnabled} onCheckedChange={toggleSettingsNotif} />
+                                    <Switch
+                                        checked={notifEnabled}
+                                        onCheckedChange={toggleSettingsNotif}
+                                        disabled={typeof window !== "undefined" && window.Notification?.permission === "denied"}
+                                    />
                                 </div>
                                 <div className="p-4 flex justify-between items-center hover:bg-secondary/20 transition-colors rounded-xl">
                                     <div className="flex flex-col">
                                         <span className="font-semibold text-sm text-foreground">Suara Adzan</span>
-                                        <span className="text-xs text-muted-foreground">Putar audio adzan otomatis</span>
+                                        <span className="text-xs text-muted-foreground">Putar audio adzan otomatis saat shalat</span>
                                     </div>
-                                    <Switch checked={soundEnabled} onCheckedChange={toggleSettingsSound} disabled={!notifEnabled} />
+                                    <Switch checked={soundEnabled} onCheckedChange={toggleSettingsSound} />
                                 </div>
                             </div>
 
