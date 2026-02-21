@@ -4,6 +4,7 @@ import { useState, useEffect } from "react";
 import { Moon, MapPin, Search, Check, X, Loader2, CheckCircle2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { motion, AnimatePresence } from "framer-motion";
+import AdzanNotification from "./AdzanNotification";
 
 const DEFAULT_CITY = {
     id: "67fe1456a32be2ab743ff58f",
@@ -272,6 +273,9 @@ export default function PrayerTimes() {
                 </motion.div>
             </AnimatePresence>
 
+            {/* Notification Bar via distinct component */}
+            <AdzanNotification prayerToday={prayerToday} />
+
             {/* Modal Location Picker */}
             <AnimatePresence>
                 {isModalOpen && (
@@ -354,6 +358,8 @@ export default function PrayerTimes() {
                     </motion.div>
                 )}
             </AnimatePresence>
+
+
         </div>
     );
 }
