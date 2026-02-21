@@ -3,9 +3,12 @@ import { format, subDays, isSameDay } from "date-fns";
 export function calculateStreaks() {
     const today = new Date();
 
-    const fastingStreak = getStreak(today, (tasks) => tasks.includes("puasa"));
-    const tarawihStreak = getStreak(today, (tasks) => tasks.includes("tarawih"));
-    const prayerStreak = getStreak(today, (tasks) => {
+    const fastingStreak = getStreak(today, (key, tasks) => {
+        if (typeof window === "undefined") return false;
+        return window.localStorage.getItem(`ramadan-fasting-${key}`) === "true";
+    });
+    const tarawihStreak = getStreak(today, (key, tasks) => tasks.includes("tarawih"));
+    const prayerStreak = getStreak(today, (key, tasks) => {
         const required = ["subuh", "zuhur", "ashar", "maghrib", "isya"];
         return required.every(r => tasks.includes(r));
     });
@@ -23,7 +26,7 @@ function getStreak(today, predicate) {
     // Check Today
     const todayKey = format(today, "yyyy-MM-dd");
     const todayData = loadTasks(todayKey);
-    const todayDone = predicate(todayData);
+    const todayDone = predicate(todayKey, todayData);
 
     if (todayDone) {
         streak++;
@@ -33,7 +36,7 @@ function getStreak(today, predicate) {
     let pointer = subDays(today, 1);
     while (true) {
         const key = format(pointer, "yyyy-MM-dd");
-        if (predicate(loadTasks(key))) {
+        if (predicate(key, loadTasks(key))) {
             streak++;
             pointer = subDays(pointer, 1);
         } else {

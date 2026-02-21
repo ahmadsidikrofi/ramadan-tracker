@@ -13,13 +13,17 @@ export default function StreakBadges() {
         // Initial load
         updateStreaks();
 
-        // Listen for custom event or just interval? 
-        // Since DailyTracker writes to local storage, we can't easily subscribe to storage events within the same window 
-        // unless we dispatch a custom event.
-        // For now, we will just update on mount and interval, or hope the parent re-renders.
+        // Listen for events from DailyTracker
+        const handleUpdate = () => updateStreaks();
+        window.addEventListener("ramadan-tracker-update", handleUpdate);
 
-        const interval = setInterval(updateStreaks, 2000); // Poll every 2s for simplicity
-        return () => clearInterval(interval);
+        // As a fallback to cross-tab updates
+        window.addEventListener("storage", handleUpdate);
+
+        return () => {
+            window.removeEventListener("ramadan-tracker-update", handleUpdate);
+            window.removeEventListener("storage", handleUpdate);
+        };
     }, []);
 
     const updateStreaks = () => {

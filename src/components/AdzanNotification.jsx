@@ -162,9 +162,9 @@ export default function AdzanNotification({ prayerToday }) {
                         className="fixed inset-0 z-100 flex items-end justify-center sm:items-center bg-black/40 backdrop-blur-sm p-4"
                     >
                         <motion.div
-                            initial={{ y: "100%", opacity: 0, scale: 0.90 }}
+                            initial={{ y: "100%", opacity: 0, scale: 0.30 }}
                             animate={{ y: 0, opacity: 1, scale: 1 }}
-                            exit={{ y: "100%", opacity: 0, scale: 0.90 }}
+                            exit={{ y: "100%", opacity: 0, scale: 0.30 }}
                             transition={{ type: "spring", damping: 25, stiffness: 300 }}
                             className="bg-background w-full max-w-sm rounded-3xl overflow-hidden shadow-2xl flex flex-col pointer-events-auto border border-border/50"
                         >

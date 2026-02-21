@@ -128,7 +128,37 @@ export default function HadisPage() {
             </div>
 
             <main className="px-4 pt-6 max-w-xl mx-auto flex flex-col gap-6">
+                {/* Pagination */}
+                {!loading && (
+                    <section className="flex items-center justify-between py-6 mt-4 border-t border-border/50">
+                        <button
+                            onClick={() => fetchHadiths(pagination.current_page - 1)}
+                            disabled={pagination.current_page === 1}
+                            className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-white border border-border text-sm font-medium shadow-sm hover:bg-black/5 disabled:opacity-50 disabled:pointer-events-none transition-all active:scale-95"
+                        >
+                            <ChevronLeft size={16} />
+                            <span>Sebelumnya</span>
+                        </button>
 
+                        <div className="flex flex-col items-center">
+                            <span className="text-sm font-bold text-foreground">
+                                Hal {pagination.current_page}
+                            </span>
+                            <span className="text-xs text-muted-foreground">
+                                dari {pagination.total_pages}
+                            </span>
+                        </div>
+
+                        <button
+                            onClick={() => fetchHadiths(pagination.current_page + 1)}
+                            disabled={pagination.current_page === pagination.total_pages}
+                            className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-white border border-border text-sm font-medium shadow-sm hover:bg-black/5 disabled:opacity-50 disabled:pointer-events-none transition-all active:scale-95"
+                        >
+                            <span>Selanjutnya</span>
+                            <ChevronRight size={16} />
+                        </button>
+                    </section>
+                )}
                 {/* Hero Section: Hadits Hari Ini */}
                 {dailyHadith && (
                     <section>
@@ -156,7 +186,7 @@ export default function HadisPage() {
                                     </p>
                                 </div>
 
-                                <div className="text-xs text-white/90 leading-relaxed font-sans">
+                                <div className="text-sm text-white/90 leading-relaxed font-sans">
                                     "{dailyHadith.id}"
                                 </div>
 
@@ -246,7 +276,7 @@ export default function HadisPage() {
                                             </p>
                                         </div>
 
-                                        <div className="pl-3 mb-6 text-xs leading-relaxed text-muted-foreground">
+                                        <div className="pl-3 mb-6 text-sm leading-relaxed text-muted-foreground">
                                             "{hadith.id}"
                                         </div>
 
