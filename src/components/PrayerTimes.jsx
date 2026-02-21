@@ -245,11 +245,11 @@ export default function PrayerTimes() {
 
             {/* Prayer List */}
             <AnimatePresence>
-                <motion.div className="mt-8 grid grid-cols-6 gap-1 sm:gap-2 text-center text-white hover:cursor-default"
+                <motion.div className="mt-8 grid grid-cols-6 gap-1 sm:gap-2 text-center text-white hover:cursor-default drop-shadow-[0_0_8px_rgba(239,68,68,0.5)]"
                     initial={{ opacity: 0, scale: 0.5 }}
                     animate={{ opacity: 1, scale: 1 }}
                     exit={{ opacity: 0, scale: 0.5 }}
-                    transition={{ duration: 0.5, ease: "easeOut" }}
+                    transition={{ duration: 0.9, ease: "easeOut" }}
                 >
                     {displayPrayers.map((prayer) => {
                         const isNext = prayer.label === nextPrayer.name;
