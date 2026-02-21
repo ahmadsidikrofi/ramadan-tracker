@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useParams } from "next/navigation";
 import { getSurah } from "@/lib/quran-api";
 import { AnimatePresence, motion } from "framer-motion";
@@ -21,6 +21,12 @@ export default function SurahDetail() {
     const [mode, setMode] = useState("read"); // "read" or "practice"
 
     const [memorized, setMemorized] = useState(new Set());
+
+    // Keeping ref to access the latest state inside event listeners securely
+    const playingIndexRef = useRef(playingIndex);
+    useEffect(() => {
+        playingIndexRef.current = playingIndex;
+    }, [playingIndex]);
 
     // Initialize Audio only on client side
     useEffect(() => {
@@ -48,14 +54,39 @@ export default function SurahDetail() {
     }, [id]);
 
     useEffect(() => {
-        if (!audio) return;
+        if (!audio || !data) return;
 
-        const handleEnded = () => setPlayingIndex(null);
+        const handleEnded = () => {
+            const current = playingIndexRef.current;
+            if (current !== null && current + 1 < data.ayahs.length) {
+                const nextIndex = current + 1;
+                const nextUrl = data.ayahs[nextIndex].audio;
+
+                // Brief pause for natural reading transition
+                setTimeout(() => {
+                    audio.src = nextUrl;
+                    audio.play().catch(e => console.error("Audio play error:", e));
+                    setPlayingIndex(nextIndex);
+                }, 400);
+            } else {
+                setPlayingIndex(null);
+            }
+        };
+
         audio.addEventListener('ended', handleEnded);
 
         return () => {
-            audio.pause();
             audio.removeEventListener('ended', handleEnded);
+        };
+    }, [audio, data]);
+
+    // Separate unmount cleanup to avoid pausing between fast renders/re-renders
+    useEffect(() => {
+        return () => {
+            if (audio) {
+                audio.pause();
+                audio.src = "";
+            }
         };
     }, [audio]);
 
