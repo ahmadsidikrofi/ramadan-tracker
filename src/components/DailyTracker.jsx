@@ -1,8 +1,9 @@
 import { useState, useEffect, useMemo } from "react";
-import { CheckCircle2, Circle, ChevronDown, ChevronUp, ChevronLeft, ChevronRight, Calendar, Moon, Sparkles, MessageCircleWarning } from "lucide-react";
+import { CheckCircle2, Circle, ChevronDown, ChevronUp, ChevronLeft, ChevronRight, Calendar, Moon, Sparkles, MessageCircleWarning, Share2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { format, addDays, subDays, isToday, isFuture, startOfDay } from "date-fns";
 import { id } from "date-fns/locale";
+import ShareProgress from "./ShareProgress";
 
 const TASKS = [
     { id: "subuh", label: "Shalat Subuh", points: 10 },
@@ -19,6 +20,7 @@ export default function DailyTracker() {
     const [isOpen, setIsOpen] = useState(true);
     const [completedTasks, setCompletedTasks] = useState([]);
     const [isFasting, setIsFasting] = useState(false);
+    const [isShareOpen, setIsShareOpen] = useState(false);
 
     const dateKey = format(selectedDate, "yyyy-MM-dd");
 
@@ -74,8 +76,17 @@ export default function DailyTracker() {
     }, [completedTasks, isFasting]);
 
     return (
-        <div className="flex flex-col gap-6 mb-8">
-            <h2 className="text-2xl font-bold text-slate-800 px-1">Daily Worship & Activity</h2>
+        <div className="flex flex-col gap-6 my-4 relative">
+            <div className="flex justify-between items-center px-1">
+                <h2 className="text-2xl font-bold text-slate-800">Sembahyang Harian</h2>
+                <button
+                    onClick={() => setIsShareOpen(true)}
+                    className="flex items-center gap-2 px-3 py-1.5 bg-primary/10 text-primary hover:bg-primary/20 transition-colors rounded-full text-xs font-bold uppercase tracking-wider"
+                >
+                    <Share2 size={14} />
+                    <span>Share</span>
+                </button>
+            </div>
 
             {/* Other Activities Accordion */}
             <div className="glass rounded-3xl overflow-hidden border border-white/40 shadow-sm">
@@ -88,7 +99,7 @@ export default function DailyTracker() {
                             <CheckCircle2 size={20} />
                         </div>
                         <div className="text-left">
-                            <span className="block font-bold text-slate-700">Daily Checklist</span>
+                            <span className="block font-bold text-slate-700">Daftar Kegiatan</span>
                             <span className="text-[10px] text-slate-500 font-medium uppercase tracking-widest">
                                 {completedTasks.length} / {TASKS.length} Kegiatan Selesai
                             </span>
@@ -235,6 +246,15 @@ export default function DailyTracker() {
                     </div>
                 </div>
             </div>
+
+            {/* Share Progress Modal */}
+            <ShareProgress
+                isOpen={isShareOpen}
+                onClose={() => setIsShareOpen(false)}
+                selectedDate={selectedDate}
+                completedTasks={completedTasks}
+                isFasting={isFasting}
+            />
         </div>
     );
 }
