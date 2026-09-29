@@ -55,7 +55,11 @@ export default function PrayerTimes() {
 
         const handleOpenModal = () => handleOpenModalData();
         window.addEventListener("open-location-modal", handleOpenModal);
-        return () => window.removeEventListener("open-location-modal", handleOpenModal);
+        window.addEventListener("location-changed", loadSaved);
+        return () => {
+            window.removeEventListener("open-location-modal", handleOpenModal);
+            window.removeEventListener("location-changed", loadSaved);
+        };
     }, [cities]); // include cities so the inner closure doesn't get stale
 
     // Fetch Prayer Times
@@ -70,14 +74,24 @@ export default function PrayerTimes() {
                 const data = await res.json();
 
                 const today = new Date();
-                const dateStr = `${today.getFullYear()}-${today.getMonth() + 1}-${today.getDate()}`;
+                const y = today.getFullYear();
+                const m = today.getMonth() + 1;
+                const d = today.getDate();
 
-                let todayData = data.prayers?.find(p => p.date === dateStr);
+                // Robust date matching: handles both single digit and padded formats
+                let todayData = data.prayers?.find(p => {
+                    if (!p.date) return false;
+                    const parts = p.date.split("-").map(Number);
+                    return parts[0] === y && parts[1] === m && parts[2] === d;
+                });
                 if (!todayData && data.prayers?.length > 0) {
-                    todayData = data.prayers[0]; // fallback
+                    todayData = data.prayers.find(p => {
+                        const parts = p.date?.split("-").map(Number);
+                        return parts && parts[2] === d;
+                    }) || data.prayers[0];
                 }
 
-                if (todayData) {
+                if (todayData?.time) {
                     setPrayerToday(todayData.time);
                 }
             } catch (e) {
@@ -274,7 +288,7 @@ export default function PrayerTimes() {
             </AnimatePresence>
 
             {/* Notification Bar via distinct component */}
-            <AdzanNotification prayerToday={prayerToday} />
+            <AdzanNotification prayerToday={prayerToday} city={city} />
 
             {/* Modal Location Picker */}
             <AnimatePresence>

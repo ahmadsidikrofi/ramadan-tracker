@@ -10,6 +10,8 @@ const withPWA = withPWAInit({
 const nextConfig = {
   /* config options here */
   reactCompiler: true,
+  turbopack: {},
+  // Silences the Turbopack vs Webpack warning from next-pwa
 };
 
 export default withPWA(nextConfig);
