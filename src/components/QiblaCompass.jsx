@@ -48,6 +48,7 @@ export default function QiblaCompass() {
     const [errorMsg, setErrorMsg] = useState(null);
     const [qiblaAngle, setQiblaAngle] = useState(null);
     const [distanceKm, setDistanceKm] = useState(null);
+    const [isAligned, setIsAligned] = useState(false);
 
     // Sensor kompas otomatis
     const [isSensorActive, setIsSensorActive] = useState(false);
@@ -160,25 +161,55 @@ export default function QiblaCompass() {
     // 3. Rotasi aktif: jika sensor aktif, dial berputar mengikuti HP (-sensorHeading), jika laptop, ikuti manual drag
     const currentRotation = isSensorActive ? -sensorHeading : manualRotation;
 
-    // Haptic feedback ketika pas menghadap Kiblat di HP (toleransi 3 derajat)
-    useEffect(() => {
-        if (!isSensorActive || qiblaAngle === null) return;
+    // Trigger haptic vibration & tactile feedback saat pointer menyentuh needle reference
+    const triggerHaptic = useCallback(() => {
+        // 1. Getaran perangkat fisik (Android / Chrome Mobile)
+        if (typeof navigator !== "undefined" && "vibrate" in navigator) {
+            try {
+                navigator.vibrate([50, 40, 50]);
+            } catch (e) {}
+        }
 
-        // Sudut jarum Ka'bah pada layar = (qiblaAngle - sensorHeading)
-        const diff = (qiblaAngle - sensorHeading + 540) % 360 - 180;
-        const isAligned = Math.abs(diff) <= 3;
-
-        if (isAligned && !lastVibratedRef.current) {
-            lastVibratedRef.current = true;
-            if (typeof navigator !== "undefined" && "vibrate" in navigator) {
-                try {
-                    navigator.vibrate([40, 60, 40]);
-                } catch (e) { }
+        // 2. Tactile audio tick via Web Audio API (untuk iOS Safari / browser yang tidak mendukung navigator.vibrate)
+        try {
+            const AudioCtx = window.AudioContext || window.webkitAudioContext;
+            if (AudioCtx) {
+                const ctx = new AudioCtx();
+                const osc = ctx.createOscillator();
+                const gain = ctx.createGain();
+                osc.type = "sine";
+                osc.frequency.setValueAtTime(140, ctx.currentTime);
+                osc.frequency.exponentialRampToValueAtTime(40, ctx.currentTime + 0.04);
+                gain.gain.setValueAtTime(0.12, ctx.currentTime);
+                gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.04);
+                osc.connect(gain);
+                gain.connect(ctx.destination);
+                osc.start();
+                osc.stop(ctx.currentTime + 0.05);
             }
-        } else if (!isAligned) {
+        } catch (e) {}
+    }, []);
+
+    // Periksa apakah Ka'bah / Qibla Arrow tepat menyentuh needle reference di atas (toleransi 4.5 derajat)
+    const checkAlignment = useCallback((rot) => {
+        if (qiblaAngle === null) return false;
+        const diff = (qiblaAngle + rot + 540) % 360 - 180;
+        return Math.abs(diff) <= 4.5;
+    }, [qiblaAngle]);
+
+    // Haptic feedback aktif (baik mode sensor otomatis maupun manual)
+    useEffect(() => {
+        if (qiblaAngle === null) return;
+        const aligned = checkAlignment(currentRotation);
+        setIsAligned(aligned);
+
+        if (aligned && !lastVibratedRef.current) {
+            lastVibratedRef.current = true;
+            triggerHaptic();
+        } else if (!aligned) {
             lastVibratedRef.current = false;
         }
-    }, [isSensorActive, qiblaAngle, sensorHeading]);
+    }, [currentRotation, qiblaAngle, checkAlignment, triggerHaptic]);
 
     // 4. Manual Drag (Khusus Laptop / PC ketika sensor tidak aktif)
     const handlePointerDown = (e) => {
@@ -204,6 +235,16 @@ export default function QiblaCompass() {
         let newRot = (startRotation + delta) % 360;
         if (newRot < 0) newRot += 360;
         setManualRotation(newRot);
+
+        // Getar saat Ka'bah menyentuh needle secara langsung saat di-drag
+        const aligned = checkAlignment(newRot);
+        setIsAligned(aligned);
+        if (aligned && !lastVibratedRef.current) {
+            lastVibratedRef.current = true;
+            triggerHaptic();
+        } else if (!aligned) {
+            lastVibratedRef.current = false;
+        }
     };
 
     const handlePointerUp = (e) => {
@@ -264,7 +305,11 @@ export default function QiblaCompass() {
                         {/* Compass Component Area */}
                         <div className="relative flex justify-center items-center w-[280px] h-[280px] sm:w-[320px] sm:h-[320px]">
                             {/* Static Red Needle (Device Heading Reference) */}
-                            <div className="absolute top-[-10px] w-1 h-5 bg-red-600 rounded-sm z-30 shadow-[0_0_10px_rgba(220,38,38,0.5)]" />
+                            <div className={`absolute top-[-10px] w-1.5 h-5 rounded-sm z-30 transition-all duration-200 ${
+                                isAligned
+                                    ? "bg-[#d9a84e] shadow-[0_0_15px_rgba(217,168,78,0.9)] scale-110"
+                                    : "bg-red-600 shadow-[0_0_10px_rgba(220,38,38,0.5)]"
+                            }`} />
 
                             {/* Outer Frame ring */}
                             <div className="absolute w-[105%] h-[105%] rounded-full border border-emerald-100 bg-emerald-50/80 backdrop-blur-md shadow-[0_20px_50px_rgba(4,120,87,0.15)]" />
@@ -321,8 +366,14 @@ export default function QiblaCompass() {
                                     style={{ transform: `rotate(${qiblaAngle}deg)` }}
                                 >
                                     {/* Kaaba Shape */}
-                                    <div className="absolute -top-4 left-1/2 -translate-x-1/2 flex flex-col items-center drop-shadow-[0_0_10px_rgba(251,191,36,0.5)]">
-                                        <div className="w-0 h-0 border-l-[6px] border-l-transparent border-r-[6px] border-r-transparent border-b-[6px] border-b-[#d9a84e] mb-1" />
+                                    <div className={`absolute -top-4 left-1/2 -translate-x-1/2 flex flex-col items-center transition-all duration-200 ${
+                                        isAligned
+                                            ? "drop-shadow-[0_0_16px_rgba(217,168,78,0.95)] scale-105"
+                                            : "drop-shadow-[0_0_10px_rgba(251,191,36,0.5)]"
+                                    }`}>
+                                        <div className={`w-0 h-0 border-l-[6px] border-l-transparent border-r-[6px] border-r-transparent border-b-[6px] border-b-[#d9a84e] mb-1 transition-transform ${
+                                            isAligned ? "scale-110" : ""
+                                        }`} />
                                         <div className="w-10 h-9 rounded-[7px] border-2 border-[#d9a84e] bg-black flex justify-center pt-1 shadow-2xl">
                                             <div className="w-full h-1 bg-[#d9a84e] px-1 opacity-90 mx-px" />
                                         </div>
