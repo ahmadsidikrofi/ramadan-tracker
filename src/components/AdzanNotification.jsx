@@ -1,30 +1,23 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
-import { X, Bell, BellRing, BellOff, Volume2, VolumeX, Play, Square, MapPin, CheckCircle2, AlertCircle, Info } from "lucide-react";
+import { X, Bell, BellRing, BellOff, Volume2, Square, ChevronRight } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Switch } from "@/components/ui/switch";
 
 export default function AdzanNotification({ prayerToday, city }) {
-    // Notification & Sound State
     const [notifEnabled, setNotifEnabled] = useState(false);
     const [soundEnabled, setSoundEnabled] = useState(true);
     const [isSettingsModalOpen, setIsSettingsModalOpen] = useState(false);
     const [isPlayingAdzan, setIsPlayingAdzan] = useState(false);
     const [currentPrayer, setCurrentPrayer] = useState("");
-    const [isAudioUnlocked, setIsAudioUnlocked] = useState(false);
-    const [audioBlockedPrompt, setAudioBlockedPrompt] = useState(null);
 
     const audioRef = useRef(null);
     const notifiedMap = useRef({});
 
-    // Prevent body scroll when settings modal is open
+    // Prevent body scroll when modal is open
     useEffect(() => {
-        if (isSettingsModalOpen) {
-            document.body.style.overflow = "hidden";
-        } else {
-            document.body.style.overflow = "unset";
-        }
+        document.body.style.overflow = isSettingsModalOpen ? "hidden" : "unset";
         return () => {
             document.body.style.overflow = "unset";
         };
@@ -32,7 +25,6 @@ export default function AdzanNotification({ prayerToday, city }) {
 
     // Initial Load for localStorage & permissions
     useEffect(() => {
-        // Load Sound preference (default: true)
         const s = localStorage.getItem("ramadan-sound");
         if (s !== null) {
             setSoundEnabled(s === "true");
@@ -41,16 +33,14 @@ export default function AdzanNotification({ prayerToday, city }) {
             localStorage.setItem("ramadan-sound", "true");
         }
 
-        // Load Notification preference
         const n = localStorage.getItem("ramadan-notif");
         if (n === "true" && typeof window !== "undefined" && "Notification" in window && Notification.permission === "granted") {
             setNotifEnabled(true);
         }
     }, []);
 
-    // Unlock Audio Context & Audio Element for Mobile Browsers (iOS Safari / Android Chrome)
+    // Seamless background audio unlock on first user interaction
     const unlockAudio = () => {
-        // 1. Resume Web Audio API AudioContext if suspended
         try {
             const AudioCtx = window.AudioContext || window.webkitAudioContext;
             if (AudioCtx) {
@@ -61,11 +51,8 @@ export default function AdzanNotification({ prayerToday, city }) {
                     window.__ramadanAudioCtx.resume();
                 }
             }
-        } catch (e) {
-            console.warn("AudioContext unlock note:", e);
-        }
+        } catch (e) {}
 
-        // 2. Prime the HTML5 Audio element
         const audio = audioRef.current;
         if (audio && audio.paused && !isPlayingAdzan) {
             const prevMuted = audio.muted;
@@ -77,24 +64,16 @@ export default function AdzanNotification({ prayerToday, city }) {
                         audio.pause();
                         audio.currentTime = 0;
                         audio.muted = prevMuted;
-                        setIsAudioUnlocked(true);
                     })
-                    .catch((err) => {
+                    .catch(() => {
                         audio.muted = prevMuted;
-                        console.log("Audio unlock attempt caught:", err);
                     });
             }
-        } else if (audio && !audio.paused) {
-            setIsAudioUnlocked(true);
         }
     };
 
-    // Attach interaction listener to unlock audio on first touch/click anywhere on smartphone
     useEffect(() => {
-        const handleUserGesture = () => {
-            unlockAudio();
-        };
-
+        const handleUserGesture = () => unlockAudio();
         window.addEventListener("touchstart", handleUserGesture, { passive: true, once: true });
         window.addEventListener("pointerdown", handleUserGesture, { passive: true, once: true });
         window.addEventListener("click", handleUserGesture, { once: true });
@@ -106,7 +85,7 @@ export default function AdzanNotification({ prayerToday, city }) {
         };
     }, []);
 
-    // Play Adzan
+    // Play Adzan with Media Session API for lockscreen integration
     const playAdzan = (prayerName = "Shalat", prayerTime = "") => {
         if (!audioRef.current || !soundEnabled) return;
 
@@ -120,21 +99,28 @@ export default function AdzanNotification({ prayerToday, city }) {
                 .then(() => {
                     setIsPlayingAdzan(true);
                     setCurrentPrayer(prayerName);
-                    setIsAudioUnlocked(true);
-                    setAudioBlockedPrompt(null);
+
+                    // Integrate with Mobile Media Session (displays native lockscreen player)
+                    if ("mediaSession" in navigator) {
+                        navigator.mediaSession.metadata = new MediaMetadata({
+                            title: `Adzan ${prayerName}`,
+                            artist: "Ramadan Tracker",
+                            album: city?.name || "Jadwal Shalat",
+                            artwork: [
+                                { src: "/android-chrome-192x192.png", sizes: "192x192", type: "image/png" },
+                                { src: "/android-chrome-512x512.png", sizes: "512x512", type: "image/png" }
+                            ]
+                        });
+                        navigator.mediaSession.setActionHandler("stop", stopAdzan);
+                        navigator.mediaSession.setActionHandler("pause", stopAdzan);
+                    }
                 })
                 .catch((err) => {
-                    console.warn("Autoplay blocked on mobile browser:", err);
-                    // Provide fallback notification so user can tap to start audio
-                    setAudioBlockedPrompt({
-                        prayer: prayerName,
-                        time: prayerTime
-                    });
+                    console.warn("Autoplay blocked:", err);
                 });
         }
     };
 
-    // Stop Adzan
     const stopAdzan = () => {
         if (!audioRef.current) return;
         audioRef.current.pause();
@@ -143,14 +129,13 @@ export default function AdzanNotification({ prayerToday, city }) {
         setCurrentPrayer("");
     };
 
-    // Safe Notification Trigger for Android Chrome & Desktop
+    // Safe Notification Trigger
     const triggerNotification = (prayerName, prayerTime) => {
         const cityName = city?.name || "Wilayah Anda";
         const title = `Waktu Shalat ${prayerName} - ${cityName}`;
-        const body = `Telah masuk waktu shalat ${prayerName} (${prayerTime}) untuk wilayah ${cityName} dan sekitarnya.`;
+        const body = `Telah masuk waktu shalat ${prayerName} (${prayerTime}) untuk ${cityName} dan sekitarnya.`;
 
         if (typeof window !== "undefined" && "Notification" in window && Notification.permission === "granted") {
-            // Android Chrome requires ServiceWorkerRegistration.showNotification()
             if ("serviceWorker" in navigator && navigator.serviceWorker.ready) {
                 navigator.serviceWorker.ready
                     .then((reg) => {
@@ -165,32 +150,20 @@ export default function AdzanNotification({ prayerToday, city }) {
                     })
                     .catch(() => {
                         try {
-                            new Notification(title, {
-                                body,
-                                icon: "/android-chrome-192x192.png"
-                            });
-                        } catch (e) {
-                            console.warn("Standard notification not permitted:", e);
-                        }
+                            new Notification(title, { body, icon: "/android-chrome-192x192.png" });
+                        } catch (e) {}
                     });
             } else {
                 try {
-                    new Notification(title, {
-                        body,
-                        icon: "/android-chrome-192x192.png"
-                    });
-                } catch (e) {
-                    console.warn("Notification error:", e);
-                }
+                    new Notification(title, { body, icon: "/android-chrome-192x192.png" });
+                } catch (e) {}
             }
         }
     };
 
-    // Notification & Audio Scheduling System based on selected city & prayer times
+    // Scheduled checking based on location & prayer times
     useEffect(() => {
-        if (!prayerToday) return;
-        // If neither sound nor notification is active, skip scheduling
-        if (!soundEnabled && !notifEnabled) return;
+        if (!prayerToday || (!soundEnabled && !notifEnabled)) return;
 
         const checkPrayerTimes = () => {
             const now = new Date();
@@ -217,12 +190,9 @@ export default function AdzanNotification({ prayerToday, city }) {
                     if (!notifiedMap.current[key]) {
                         notifiedMap.current[key] = true;
 
-                        // 1. Trigger Push Notification if enabled
                         if (notifEnabled) {
                             triggerNotification(p.id, cleanTime);
                         }
-
-                        // 2. Trigger Audio Adzan if sound enabled
                         if (soundEnabled) {
                             playAdzan(p.id, cleanTime);
                         }
@@ -232,33 +202,9 @@ export default function AdzanNotification({ prayerToday, city }) {
         };
 
         checkPrayerTimes();
-        const interval = setInterval(checkPrayerTimes, 5000); // Check every 5s for precision
+        const interval = setInterval(checkPrayerTimes, 5000);
         return () => clearInterval(interval);
     }, [prayerToday, city, notifEnabled, soundEnabled]);
-
-    // Handle initial button toggle
-    const handleNotifToggle = async () => {
-        unlockAudio();
-
-        if (!("Notification" in window) || window.Notification.permission === "denied") {
-            setIsSettingsModalOpen(true);
-            return;
-        }
-
-        try {
-            const permission = await Notification.requestPermission();
-            if (permission === "granted") {
-                setNotifEnabled(true);
-                setSoundEnabled(true);
-                localStorage.setItem("ramadan-notif", "true");
-                localStorage.setItem("ramadan-sound", "true");
-            } else {
-                setIsSettingsModalOpen(true);
-            }
-        } catch (e) {
-            setIsSettingsModalOpen(true);
-        }
-    };
 
     const toggleSettingsNotif = async (checked) => {
         unlockAudio();
@@ -273,8 +219,6 @@ export default function AdzanNotification({ prayerToday, city }) {
                     setNotifEnabled(true);
                     localStorage.setItem("ramadan-notif", "true");
                 }
-            } else {
-                alert("Izin notifikasi telah diblokir di setelan browser HP/Laptop Anda. Anda tetap dapat mendengarkan Suara Adzan.");
             }
         } else {
             setNotifEnabled(false);
@@ -291,18 +235,9 @@ export default function AdzanNotification({ prayerToday, city }) {
         }
     };
 
-    const handleTestSound = () => {
-        unlockAudio();
-        if (isPlayingAdzan) {
-            stopAdzan();
-        } else {
-            playAdzan("Uji Coba", "Sekarang");
-        }
-    };
-
     return (
         <>
-            {/* Hidden persistent Audio element for seamless mobile playback */}
+            {/* Background Audio element */}
             <audio
                 ref={audioRef}
                 src="/Adzan.mp3"
@@ -312,209 +247,119 @@ export default function AdzanNotification({ prayerToday, city }) {
                     setIsPlayingAdzan(false);
                     setCurrentPrayer("");
                 }}
-                onError={(e) => {
-                    console.error("Audio error:", e);
-                    setIsPlayingAdzan(false);
-                }}
             />
 
-            {/* Notification / Adzan Audio Control Bar */}
             <div className="mt-4 flex flex-col gap-2.5">
-                {/* 1. Playing Adzan Active Alert Banner */}
+                {/* Active Adzan Playback Pill */}
                 <AnimatePresence>
                     {isPlayingAdzan && (
                         <motion.div
-                            initial={{ opacity: 0, y: -10, scale: 0.95 }}
-                            animate={{ opacity: 1, y: 0, scale: 1 }}
-                            exit={{ opacity: 0, y: -10, scale: 0.95 }}
-                            className="flex items-center justify-between bg-emerald-950/80 border border-emerald-400/50 rounded-2xl p-3.5 backdrop-blur-md shadow-lg"
+                            initial={{ opacity: 0, y: -6 }}
+                            animate={{ opacity: 1, y: 0 }}
+                            exit={{ opacity: 0, y: -6 }}
+                            className="flex items-center justify-between bg-black/40 border border-accent/40 rounded-2xl p-3.5 backdrop-blur-md shadow-lg"
                         >
                             <div className="flex items-center gap-3">
-                                <div className="p-2.5 bg-accent/30 rounded-full text-accent animate-pulse">
-                                    <Volume2 size={20} />
+                                <div className="p-2 bg-accent/20 rounded-full text-accent">
+                                    <Volume2 size={18} className="animate-pulse" />
                                 </div>
                                 <div className="text-left">
-                                    <div className="flex items-center gap-1.5">
-                                        <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping"></span>
-                                        <h4 className="text-sm font-bold text-white">
-                                            Adzan {currentPrayer}
-                                        </h4>
-                                    </div>
-                                    <p className="text-xs text-emerald-200/90 truncate max-w-[170px] sm:max-w-xs">
-                                        {city?.name || "Wilayah Anda"}
+                                    <h4 className="text-xs font-semibold text-white">
+                                        Adzan {currentPrayer} Berkumandang
+                                    </h4>
+                                    <p className="text-[11px] text-white/70">
+                                        {city?.name || "Waktu Shalat"}
                                     </p>
                                 </div>
                             </div>
                             <button
                                 onClick={stopAdzan}
-                                className="px-3.5 py-1.5 bg-red-600/90 hover:bg-red-700 text-white rounded-full text-xs font-bold transition-all shadow-md active:scale-95 flex items-center gap-1.5 cursor-pointer"
+                                className="px-3 py-1.5 bg-white/10 hover:bg-white/20 text-white rounded-xl text-xs font-medium transition-all active:scale-95 flex items-center gap-1.5 border border-white/15 cursor-pointer"
                             >
-                                <Square size={13} fill="currentColor" />
+                                <Square size={11} fill="currentColor" />
                                 <span>Hentikan</span>
                             </button>
                         </motion.div>
                     )}
                 </AnimatePresence>
 
-                {/* 2. Autoplay Blocked Fallback Banner (for strict mobile browser settings) */}
-                <AnimatePresence>
-                    {audioBlockedPrompt && !isPlayingAdzan && (
-                        <motion.div
-                            initial={{ opacity: 0, y: 5 }}
-                            animate={{ opacity: 1, y: 0 }}
-                            exit={{ opacity: 0, y: 5 }}
-                            className="flex items-center justify-between bg-amber-500/20 border border-amber-400/50 rounded-2xl p-3 backdrop-blur-md"
-                        >
-                            <div className="flex items-center gap-2 text-left">
-                                <AlertCircle size={18} className="text-amber-300 shrink-0" />
-                                <div>
-                                    <p className="text-xs font-bold text-white">
-                                        Waktu {audioBlockedPrompt.prayer} telah tiba!
-                                    </p>
-                                    <p className="text-[11px] text-white/80">
-                                        Ketuk untuk memutar suara adzan
-                                    </p>
-                                </div>
-                            </div>
-                            <button
-                                onClick={() => playAdzan(audioBlockedPrompt.prayer, audioBlockedPrompt.time)}
-                                className="px-3 py-1.5 bg-accent hover:bg-accent/80 text-white rounded-full text-xs font-bold shadow transition-all active:scale-95 cursor-pointer"
-                            >
-                                Kumandangkan
-                            </button>
-                        </motion.div>
-                    )}
-                </AnimatePresence>
-
-                {/* 3. Main Status Card */}
-                {!notifEnabled && !soundEnabled ? (
-                    <div className="flex items-center justify-between bg-accent/20 border border-accent/30 rounded-2xl p-3.5 sm:p-4 animate-in fade-in zoom-in-95 duration-300">
-                        <div className="flex items-center gap-3 text-left">
-                            <div className="p-2 bg-accent/30 rounded-full text-white">
-                                <Bell size={18} />
-                            </div>
-                            <div>
-                                <h4 className="text-sm font-bold text-white">Pengaturan Adzan</h4>
-                                <p className="text-xs text-white/80">
-                                    {city?.name ? `Lokasi: ${city.name}` : "Atur suara dan notifikasi"}
-                                </p>
-                            </div>
+                {/* Sleek, Clean Notification Trigger Card */}
+                <div
+                    className="flex items-center justify-between bg-white/10 backdrop-blur-md border border-white/15 rounded-2xl p-3.5 cursor-pointer hover:bg-white/15 transition-all shadow-sm"
+                    onClick={() => {
+                        unlockAudio();
+                        setIsSettingsModalOpen(true);
+                    }}
+                >
+                    <div className="flex items-center gap-3 text-left">
+                        <div className="p-2 bg-white/15 rounded-xl text-white">
+                            {soundEnabled ? <Volume2 size={16} /> : notifEnabled ? <BellRing size={16} /> : <BellOff size={16} />}
                         </div>
-                        <button
-                            onClick={handleNotifToggle}
-                            className="px-3.5 py-1.5 bg-accent hover:bg-accent/80 text-white rounded-full text-xs font-bold transition-all shadow-md active:scale-95 cursor-pointer"
-                        >
-                            Atur Sekarang
-                        </button>
-                    </div>
-                ) : (
-                    <div
-                        className="flex items-center justify-between bg-white/10 backdrop-blur-md border border-white/20 rounded-2xl p-3.5 sm:p-4 cursor-pointer hover:bg-white/15 transition-all shadow-sm group"
-                        onClick={() => {
-                            unlockAudio();
-                            setIsSettingsModalOpen(true);
-                        }}
-                    >
-                        <div className="flex items-center gap-3 text-left">
-                            <div className="p-2 bg-white/20 rounded-full text-white relative group-hover:scale-105 transition-transform">
-                                {soundEnabled ? <Volume2 size={18} /> : notifEnabled ? <BellRing size={18} /> : <BellOff size={18} />}
-                                <span className="absolute top-1.5 right-1.5 w-2 h-2 rounded-full bg-accent animate-pulse"></span>
-                            </div>
-                            <div>
-                                <div className="flex items-center gap-1.5">
-                                    <h4 className="text-sm font-bold text-white">Pengingat & Suara Adzan</h4>
-                                    {isAudioUnlocked && (
-                                        <span className="text-[10px] bg-emerald-500/30 text-emerald-200 border border-emerald-400/30 px-1.5 py-0.5 rounded-full font-medium hidden sm:inline-block">
-                                            Audio HP Siap
-                                        </span>
-                                    )}
-                                </div>
-                                <p className="text-xs text-white/70">
-                                    {city?.name || "Wilayah Terpilih"} • {soundEnabled ? "Suara Aktif" : "Hanya Notif"}
-                                </p>
-                            </div>
-                        </div>
-
-                        <div className="flex items-center gap-2">
-                            <button
-                                onClick={(e) => {
-                                    e.stopPropagation();
-                                    handleTestSound();
-                                }}
-                                className="px-2.5 py-1 bg-white/15 hover:bg-white/25 text-white rounded-lg text-xs font-medium transition-all active:scale-95 flex items-center gap-1 border border-white/20 cursor-pointer"
-                                title="Uji Suara di HP"
-                            >
-                                {isPlayingAdzan ? <Square size={11} fill="currentColor" /> : <Play size={11} fill="currentColor" />}
-                                <span>{isPlayingAdzan ? "Stop" : "Tes Suara"}</span>
-                            </button>
+                        <div>
+                            <h4 className="text-xs font-semibold text-white">Pengingat Shalat & Adzan</h4>
+                            <p className="text-[11px] text-white/70">
+                                {city?.name || "Wilayah Terpilih"} • {soundEnabled ? "Adzan Aktif" : "Hanya Notif"}
+                            </p>
                         </div>
                     </div>
-                )}
+
+                    <div className="text-white/60 hover:text-white transition-colors">
+                        <ChevronRight size={16} />
+                    </div>
+                </div>
             </div>
 
-            {/* Modal Settings Notifikasi & Suara */}
+            {/* Clean, Non-AI-Slop Settings Modal */}
             <AnimatePresence>
                 {isSettingsModalOpen && (
                     <motion.div
                         initial={{ opacity: 0 }}
                         animate={{ opacity: 1 }}
                         exit={{ opacity: 0 }}
-                        className="fixed inset-0 z-100 flex items-end justify-center sm:items-center bg-black/50 backdrop-blur-sm p-4"
+                        className="fixed inset-0 z-100 flex items-end justify-center sm:items-center bg-black/60 backdrop-blur-sm p-4"
                         onClick={() => setIsSettingsModalOpen(false)}
                     >
                         <motion.div
-                            initial={{ y: "100%", opacity: 0, scale: 0.9 }}
-                            animate={{ y: 0, opacity: 1, scale: 1 }}
-                            exit={{ y: "100%", opacity: 0, scale: 0.9 }}
-                            transition={{ type: "spring", damping: 25, stiffness: 300 }}
+                            initial={{ y: "100%", opacity: 0 }}
+                            animate={{ y: 0, opacity: 1 }}
+                            exit={{ y: "100%", opacity: 0 }}
+                            transition={{ type: "spring", damping: 26, stiffness: 320 }}
                             className="bg-background w-full max-w-sm rounded-3xl overflow-hidden shadow-2xl flex flex-col pointer-events-auto border border-border/50"
                             onClick={(e) => e.stopPropagation()}
                         >
                             {/* Modal Header */}
-                            <div className="p-4 border-b flex justify-between items-center bg-muted/40">
+                            <div className="p-4 border-b flex justify-between items-center bg-muted/30">
                                 <div>
-                                    <h3 className="font-bold text-foreground text-base">Pengaturan Adzan & Pengingat</h3>
-                                    <div className="flex items-center gap-1 text-xs text-primary font-medium mt-0.5">
-                                        <MapPin size={12} />
-                                        <span>{city?.name || "Kota Semarang"}</span>
-                                        {city?.provinceName && (
-                                            <span className="text-muted-foreground">({city.provinceName})</span>
-                                        )}
-                                    </div>
+                                    <h3 className="font-semibold text-foreground text-sm">Pengaturan Pengingat</h3>
+                                    <p className="text-[11px] text-muted-foreground mt-0.5">
+                                        {city?.name || "Kota Semarang"}
+                                    </p>
                                 </div>
                                 <button
                                     onClick={() => setIsSettingsModalOpen(false)}
-                                    className="p-1.5 bg-black/5 hover:bg-black/10 rounded-full transition-colors text-muted-foreground cursor-pointer"
+                                    className="p-1.5 bg-black/5 hover:bg-black/10 dark:hover:bg-white/10 rounded-full transition-colors text-muted-foreground cursor-pointer"
                                 >
-                                    <X size={16} />
+                                    <X size={15} />
                                 </button>
                             </div>
 
-                            {/* Toggles & Options */}
-                            <div className="p-2 flex flex-col gap-1">
-                                {/* Suara Adzan Toggle */}
-                                <div className="p-3.5 flex justify-between items-center hover:bg-secondary/20 transition-colors rounded-2xl">
+                            {/* Toggles */}
+                            <div className="p-3 flex flex-col gap-1">
+                                <div className="p-3 flex justify-between items-center hover:bg-muted/40 transition-colors rounded-xl">
                                     <div className="flex flex-col pr-2">
-                                        <div className="flex items-center gap-1.5">
-                                            <Volume2 size={16} className="text-primary" />
-                                            <span className="font-semibold text-sm text-foreground">Suara Adzan Otomatis</span>
-                                        </div>
-                                        <span className="text-xs text-muted-foreground mt-0.5">
-                                            Putar audio adzan saat masuk waktu shalat di {city?.name || "kota Anda"}
+                                        <span className="font-medium text-xs text-foreground">Suara Adzan</span>
+                                        <span className="text-[11px] text-muted-foreground">
+                                            Kumandangkan adzan otomatis saat masuk waktu shalat
                                         </span>
                                     </div>
                                     <Switch checked={soundEnabled} onCheckedChange={toggleSettingsSound} />
                                 </div>
 
-                                {/* Push Notification Toggle */}
-                                <div className="p-3.5 flex justify-between items-center hover:bg-secondary/20 transition-colors rounded-2xl">
+                                <div className="p-3 flex justify-between items-center hover:bg-muted/40 transition-colors rounded-xl">
                                     <div className="flex flex-col pr-2">
-                                        <div className="flex items-center gap-1.5">
-                                            <Bell size={16} className="text-primary" />
-                                            <span className="font-semibold text-sm text-foreground">Notifikasi Layar</span>
-                                        </div>
-                                        <span className="text-xs text-muted-foreground mt-0.5">
-                                            Tampilkan notifikasi pop-up waktu shalat
+                                        <span className="font-medium text-xs text-foreground">Notifikasi Layar</span>
+                                        <span className="text-[11px] text-muted-foreground">
+                                            Pemberitahuan visual waktu shalat
                                         </span>
                                     </div>
                                     <Switch
@@ -523,46 +368,6 @@ export default function AdzanNotification({ prayerToday, city }) {
                                         disabled={typeof window !== "undefined" && window.Notification?.permission === "denied"}
                                     />
                                 </div>
-
-                                {/* Test Sound Row */}
-                                <div className="p-3 bg-secondary/30 rounded-2xl flex items-center justify-between mt-1">
-                                    <div className="flex flex-col">
-                                        <span className="text-xs font-bold text-foreground">Uji Suara di Perangkat HP</span>
-                                        <span className="text-[11px] text-muted-foreground">
-                                            {isAudioUnlocked ? "✓ Audio browser HP telah diizinkan" : "Tekan untuk verifikasi suara di HP"}
-                                        </span>
-                                    </div>
-                                    <button
-                                        onClick={handleTestSound}
-                                        className="px-3.5 py-1.5 bg-primary hover:bg-primary/90 text-primary-foreground rounded-full text-xs font-bold shadow transition-all active:scale-95 flex items-center gap-1.5 cursor-pointer"
-                                    >
-                                        {isPlayingAdzan ? (
-                                            <>
-                                                <Square size={12} fill="currentColor" />
-                                                <span>Stop</span>
-                                            </>
-                                        ) : (
-                                            <>
-                                                <Play size={12} fill="currentColor" />
-                                                <span>Tes Suara</span>
-                                            </>
-                                        )}
-                                    </button>
-                                </div>
-                            </div>
-
-                            {/* Mobile Smartphone Tips Footer */}
-                            <div className="p-4 bg-muted/30 border-t border-border/40 text-left text-[11px] text-muted-foreground space-y-1.5">
-                                <div className="flex items-start gap-1.5 font-medium text-foreground/80">
-                                    <Info size={14} className="text-primary shrink-0 mt-0.5" />
-                                    <span>Tips Penting untuk Pengguna Smartphone:</span>
-                                </div>
-                                <p className="leading-relaxed pl-5">
-                                    1. Pastikan HP <strong>tidak dalam mode hening / silent</strong> dan volume media dinaikkan.
-                                </p>
-                                <p className="leading-relaxed pl-5">
-                                    2. Jadwal adzan akan otomatis terpicu mengikuti waktu shalat di <strong>{city?.name || "lokasi yang dipilih"}</strong>. Jika Anda berpindah kota, jadwal adzan otomatis diperbarui.
-                                </p>
                             </div>
                         </motion.div>
                     </motion.div>

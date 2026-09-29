@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { Moon, MapPin, Search, Check, X, Loader2, CheckCircle2 } from "lucide-react";
+import { Moon, MapPin, Search, Check, X, Loader2, CheckCircle2, Clock } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { motion, AnimatePresence } from "framer-motion";
 import AdzanNotification from "./AdzanNotification";
@@ -251,7 +251,8 @@ export default function PrayerTimes() {
                         exit={{ y: -100, opacity: 0, scale: 0.8 }}
                         transition={{ duration: 0.5, ease: "easeOut" }}
                     >
-                        <span className="w-2 h-2 rounded-full bg-accent animate-pulse"></span>
+                        <Clock size={13} className="text-yellow-400 drop-shadow-[0_0_6px_rgba(245,158,11,0.6)]" />
+
                         <span className="text-sm font-medium text-white">{nextPrayer.time}</span>
                     </motion.div>
                 </div>
