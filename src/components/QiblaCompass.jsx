@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef, useCallback } from "react";
-import { ArrowLeft, MapPinOff, Loader2 } from "lucide-react";
+import { ArrowLeft, MapPinOff, Loader2, Compass, Hand } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { motion, useMotionValue } from "framer-motion";
 
@@ -42,6 +42,41 @@ function calculateKaabaDistance(userLat, userLng) {
     return Math.round(R * c);
 }
 
+// Audio context helper (konsisten dengan TasbihView.jsx)
+let audioCtx = null;
+const playSoftClick = (volume = 0.4) => {
+    try {
+        if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        if (audioCtx.state === "suspended") audioCtx.resume();
+        const osc = audioCtx.createOscillator();
+        const gainNode = audioCtx.createGain();
+        osc.connect(gainNode);
+        gainNode.connect(audioCtx.destination);
+        osc.type = "sine";
+        osc.frequency.setValueAtTime(600, audioCtx.currentTime);
+        osc.frequency.exponentialRampToValueAtTime(120, audioCtx.currentTime + 0.05);
+        gainNode.gain.setValueAtTime(volume, audioCtx.currentTime);
+        gainNode.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.05);
+        osc.start(audioCtx.currentTime);
+        osc.stop(audioCtx.currentTime + 0.06);
+    } catch (e) { }
+};
+
+// Haptic feedback function (menggunakan pola TasbihView.jsx)
+const triggerHapticFeedback = () => {
+    // 1. Getaran fisik smartphone (Android Chrome / Web Vibration API)
+    if (typeof navigator !== "undefined" && navigator.vibrate) {
+        try {
+            navigator.vibrate(50);
+        } catch (e) {
+            try { navigator.vibrate([40, 30, 40]); } catch (err) { }
+        }
+    }
+
+    // 2. Audio click tactile (iOS Safari & penegas tactile)
+    playSoftClick(0.35);
+};
+
 export default function QiblaCompass() {
     const router = useRouter();
     const [location, setLocation] = useState(null);
@@ -50,31 +85,52 @@ export default function QiblaCompass() {
     const [distanceKm, setDistanceKm] = useState(null);
     const [isAligned, setIsAligned] = useState(false);
 
-    // Sensor status
-    const [isSensorActive, setIsSensorActive] = useState(false);
+    // Mode Manual vs Sensor Otomatis (Default langsung sensor kompas HP aktif)
+    const [isManualMode, setIsManualMode] = useState(false);
+    const isManualModeRef = useRef(false);
 
-    // Motion value untuk rotasi dial (hardware accelerated, tanpa lag & tanpa re-render berlebihan)
+    // Motion value untuk rotasi dial (hardware accelerated di GPU)
     const rotation = useMotionValue(0);
 
-    // Refs untuk algoritma smoothing LERP & pencegahan race condition
+    // Refs untuk algoritma LERP smoothing & pencegahan race condition
     const qiblaAngleRef = useRef(null);
-    const isSensorActiveRef = useRef(false);
     const isAlignedRef = useRef(false);
     const targetRotRef = useRef(0);
     const currentRotRef = useRef(0);
     const hasAbsoluteRef = useRef(false);
-    const lastVibratedRef = useRef(false);
 
-    // Manual drag (desktop / laptop)
+    // Manual drag (desktop / laptop / opsi manual di HP)
     const compassRef = useRef(null);
     const [isDragging, setIsDragging] = useState(false);
     const [startDragAngle, setStartDragAngle] = useState(0);
     const [startRotation, setStartRotation] = useState(0);
 
-    // Sinkronkan qiblaAngle state ke ref untuk diakses aman dalam loop animasi rAF
+    // Sinkronkan qiblaAngle state ke ref
     useEffect(() => {
         qiblaAngleRef.current = qiblaAngle;
     }, [qiblaAngle]);
+
+    // Sinkronkan isManualMode ke ref
+    useEffect(() => {
+        isManualModeRef.current = isManualMode;
+    }, [isManualMode]);
+
+    // Inisialisasi AudioContext pada interaksi pertama (unlock audio/vibrate policy di Chrome)
+    useEffect(() => {
+        const unlockUserGesture = () => {
+            try {
+                if (audioCtx && audioCtx.state === "suspended") {
+                    audioCtx.resume();
+                }
+            } catch (e) { }
+        };
+        window.addEventListener("pointerdown", unlockUserGesture, { once: true, passive: true });
+        window.addEventListener("touchstart", unlockUserGesture, { once: true, passive: true });
+        return () => {
+            window.removeEventListener("pointerdown", unlockUserGesture);
+            window.removeEventListener("touchstart", unlockUserGesture);
+        };
+    }, []);
 
     // 1. Inisialisasi Lokasi (Cepat dari localStorage, lalu GPS presisi)
     useEffect(() => {
@@ -123,68 +179,41 @@ export default function QiblaCompass() {
         );
     }, []);
 
-    // Haptic & Tactile Feedback saat Ka'bah mengunci ke Needle
-    const triggerHaptic = useCallback(() => {
-        // 1. Getaran fisik smartphone (Android Chrome / Web Vibration API)
-        if (typeof navigator !== "undefined" && "vibrate" in navigator) {
-            try {
-                navigator.vibrate([60, 40, 60]);
-            } catch (e) { }
-        }
+    // Cek alignment dan trigger haptic feedback ketika menyentuh Q needle
+    const checkAndTriggerAlignment = useCallback((rot) => {
+        if (qiblaAngleRef.current === null) return;
+        const screenDiff = ((qiblaAngleRef.current + rot + 540) % 360) - 180;
+        const aligned = Math.abs(screenDiff) <= 4.0;
 
-        // 2. Tactile audio tick (iOS Safari / browser tanpa navigator.vibrate)
-        try {
-            const AudioCtx = window.AudioContext || window.webkitAudioContext;
-            if (AudioCtx) {
-                const ctx = new AudioCtx();
-                if (ctx.state === "suspended") {
-                    ctx.resume();
-                }
-                const osc = ctx.createOscillator();
-                const gain = ctx.createGain();
-                osc.type = "sine";
-                osc.frequency.setValueAtTime(150, ctx.currentTime);
-                osc.frequency.exponentialRampToValueAtTime(40, ctx.currentTime + 0.04);
-                gain.gain.setValueAtTime(0.12, ctx.currentTime);
-                gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.04);
-                osc.connect(gain);
-                gain.connect(ctx.destination);
-                osc.start();
-                osc.stop(ctx.currentTime + 0.05);
-            }
-        } catch (e) { }
+        if (aligned && !isAlignedRef.current) {
+            isAlignedRef.current = true;
+            setIsAligned(true);
+            triggerHapticFeedback();
+        } else if (!aligned && isAlignedRef.current) {
+            isAlignedRef.current = false;
+            setIsAligned(false);
+        }
     }, []);
 
-    // Proses data heading dari sensor dengan Continuous Angle Unwinding (mencegah kompas berputar 360 derajat)
+    // Proses data heading dari sensor dengan Continuous Angle Unwinding
     const processNewHeading = useCallback((heading) => {
-        if (!isSensorActiveRef.current) {
-            isSensorActiveRef.current = true;
-            setIsSensorActive(true);
-            targetRotRef.current = -heading;
-            currentRotRef.current = -heading;
-            rotation.set(-heading);
-            return;
-        }
+        if (isManualModeRef.current) return;
 
         const rawTargetRot = -heading;
-        // Hitung delta sudut terpendek (shortest path) agar rotasi kontinu tanpa melompat saat melewati 0°/360°
         const delta = ((rawTargetRot - targetRotRef.current + 540) % 360) - 180;
         targetRotRef.current = targetRotRef.current + delta;
-    }, [rotation]);
+    }, []);
 
-    // 2. Sensor Orientasi Smartphone
+    // 2. Sensor Orientasi Smartphone (Langsung aktif otomatis di Android tanpa klik)
     useEffect(() => {
         const handleAbsoluteOrientation = (e) => {
             if (e.alpha === null || typeof e.alpha === "undefined") return;
             hasAbsoluteRef.current = true;
-
-            // Android Chrome deviceorientationabsolute mengacu ke Utara Sejati bumi
             const heading = (360 - e.alpha + 360) % 360;
             processNewHeading(heading);
         };
 
         const handleStandardOrientation = (e) => {
-            // PENTING: Jika deviceorientationabsolute sudah aktif, abaikan deviceorientation agar tidak saling bertabrakan
             if (hasAbsoluteRef.current) return;
 
             let heading = null;
@@ -207,11 +236,14 @@ export default function QiblaCompass() {
             window.addEventListener("deviceorientation", handleStandardOrientation, true);
         };
 
+        const isIOS = typeof navigator !== "undefined" && /iPad|iPhone|iPod/.test(navigator.userAgent);
+
         if (
+            isIOS &&
             typeof DeviceOrientationEvent !== "undefined" &&
             typeof DeviceOrientationEvent.requestPermission === "function"
         ) {
-            // iOS 13+ permission via touch
+            // Khusus iOS 13+ membutuhkan izin interaksi pertama kali
             const handleTouchPrompt = async () => {
                 try {
                     const state = await DeviceOrientationEvent.requestPermission();
@@ -223,6 +255,7 @@ export default function QiblaCompass() {
             };
             window.addEventListener("touchstart", handleTouchPrompt, { once: true });
         } else {
+            // Android & Desktop: LANGSUNG AKTIFKAN SENSOR TANPA HARUS KLIK
             attachListeners();
         }
 
@@ -232,17 +265,17 @@ export default function QiblaCompass() {
         };
     }, [processNewHeading]);
 
-    // 3. Animation Frame Loop: Low-Pass Filter (LERP) + Deadzone + Magnetic Snap
+    // 3. Animation Frame Loop: LERP Filter + Deadzone + Magnetic Snap
     useEffect(() => {
         let animId;
 
         const tick = () => {
-            if (isSensorActiveRef.current) {
+            if (!isManualModeRef.current) {
                 const current = currentRotRef.current;
                 let target = targetRotRef.current;
 
-                // Magnetic Snap: saat arah Ka'bah sudah dekat dengan needle (< 2.5°),
-                // kunci secara magnetis agar tidak berguncang oleh tremor tangan
+                // Magnetic Snap: saat arah Ka'bah mendekati tanda Q (< 2.5°),
+                // kunci secara magnetis agar stabil
                 if (qiblaAngleRef.current !== null) {
                     const alignDiff = ((qiblaAngleRef.current + target + 540) % 360) - 180;
                     if (Math.abs(alignDiff) <= 2.5) {
@@ -252,31 +285,15 @@ export default function QiblaCompass() {
 
                 const diff = target - current;
 
-                // Deadzone: Jika selisih sangat kecil (< 0.08°), hentikan kompas agar diam sempurna
-                if (Math.abs(diff) > 0.08) {
-                    // LERP factor 0.14 memberikan transisi mulus tanpa osilasi atau lagging
+                // Deadzone: jika perubahan sangat kecil (< 0.06°), pertahankan posisi diam
+                if (Math.abs(diff) > 0.06) {
                     const next = current + diff * 0.14;
                     currentRotRef.current = next;
                     rotation.set(next);
-
-                    // Evaluasi keselarasan needle dengan Ka'bah
-                    if (qiblaAngleRef.current !== null) {
-                        const screenDiff = ((qiblaAngleRef.current + next + 540) % 360) - 180;
-                        const aligned = Math.abs(screenDiff) <= 3.5;
-
-                        if (aligned !== isAlignedRef.current) {
-                            isAlignedRef.current = aligned;
-                            setIsAligned(aligned);
-
-                            if (aligned && !lastVibratedRef.current) {
-                                lastVibratedRef.current = true;
-                                triggerHaptic();
-                            } else if (!aligned) {
-                                lastVibratedRef.current = false;
-                            }
-                        }
-                    }
                 }
+
+                // Selalu evaluasi keselarasan pada frame saat ini
+                checkAndTriggerAlignment(currentRotRef.current);
             }
 
             animId = requestAnimationFrame(tick);
@@ -284,11 +301,11 @@ export default function QiblaCompass() {
 
         animId = requestAnimationFrame(tick);
         return () => cancelAnimationFrame(animId);
-    }, [rotation, triggerHaptic]);
+    }, [rotation, checkAndTriggerAlignment]);
 
-    // 4. Manual Drag (Khusus Laptop / PC ketika sensor fisik tidak aktif)
+    // 4. Manual Drag (Khusus Laptop / PC atau ketika user menekan tombol Mode Manual)
     const handlePointerDown = (e) => {
-        if (isSensorActiveRef.current) return;
+        if (!isManualModeRef.current) return;
         if (!compassRef.current) return;
         const rect = compassRef.current.getBoundingClientRect();
         const centerX = rect.left + rect.width / 2;
@@ -301,7 +318,7 @@ export default function QiblaCompass() {
     };
 
     const handlePointerMove = (e) => {
-        if (!isDragging || isSensorActiveRef.current || !compassRef.current) return;
+        if (!isDragging || !isManualModeRef.current || !compassRef.current) return;
         const rect = compassRef.current.getBoundingClientRect();
         const centerX = rect.left + rect.width / 2;
         const centerY = rect.top + rect.height / 2;
@@ -309,7 +326,7 @@ export default function QiblaCompass() {
         const delta = angle - startDragAngle;
         let newRot = startRotation + delta;
 
-        // Magnetic snap saat drag manual mendekati needle
+        // Magnetic snap saat drag manual mendekati tanda Q
         if (qiblaAngleRef.current !== null) {
             const alignDiff = ((qiblaAngleRef.current + newRot + 540) % 360) - 180;
             if (Math.abs(alignDiff) <= 3.0) {
@@ -319,22 +336,7 @@ export default function QiblaCompass() {
 
         currentRotRef.current = newRot;
         rotation.set(newRot);
-
-        // Evaluasi alignment
-        if (qiblaAngleRef.current !== null) {
-            const screenDiff = ((qiblaAngleRef.current + newRot + 540) % 360) - 180;
-            const aligned = Math.abs(screenDiff) <= 3.5;
-            if (aligned !== isAlignedRef.current) {
-                isAlignedRef.current = aligned;
-                setIsAligned(aligned);
-                if (aligned && !lastVibratedRef.current) {
-                    lastVibratedRef.current = true;
-                    triggerHaptic();
-                } else if (!aligned) {
-                    lastVibratedRef.current = false;
-                }
-            }
-        }
+        checkAndTriggerAlignment(newRot);
     };
 
     const handlePointerUp = (e) => {
@@ -342,6 +344,15 @@ export default function QiblaCompass() {
         try {
             e.target.releasePointerCapture(e.pointerId);
         } catch (err) { }
+    };
+
+    // Toggle antara Mode Manual dan Sensor Kompas Otomatis
+    const toggleManualMode = () => {
+        setIsManualMode((prev) => {
+            const nextMode = !prev;
+            isManualModeRef.current = nextMode;
+            return nextMode;
+        });
     };
 
     return (
@@ -379,27 +390,67 @@ export default function QiblaCompass() {
                     </div>
                 ) : (
                     <>
-                        <div className="mb-8 w-full text-center px-4">
-                            <h2 className="text-emerald-900 text-xs sm:text-[13px] font-semibold tracking-wide">
-                                {isSensorActive
-                                    ? "Arahkan HP hingga Ka'bah berada di posisi atas"
-                                    : "Putar kompas secara manual untuk menyelaraskan N ke Utara"}
-                            </h2>
-                            {!isSensorActive && (
-                                <p className="text-[11px] text-emerald-700/80 font-medium mt-1.5 tracking-normal">
-                                    atau <span className="font-semibold text-emerald-900 underline decoration-emerald-400/50 underline-offset-2">gunakan HP</span> untuk mendapatkan informasi yang lebih akurat
-                                </p>
-                            )}
+                        {/* Text Instruksi & Tombol Toggle Mode */}
+                        <div className="mb-6 w-full text-center px-4">
+                            <div className="mb-8 w-full text-center px-4">
+                                <h2 className="text-emerald-900 text-xs sm:text-[13px] font-semibold tracking-wide">
+                                    {isManualMode
+                                        ? "Arahkan HP hingga Ka'bah sejajar dengan tanda Q"
+                                        : "Putar kompas secara manual untuk menyelaraskan ke tanda Q"}
+                                </h2>
+                                {/* {!isManualMode && (
+                                    <p className="text-[11px] text-emerald-700/80 font-medium mt-1.5 tracking-normal">
+                                        atau <span className="font-semibold text-emerald-900 underline decoration-emerald-400/50 underline-offset-2">gunakan HP</span> untuk mendapatkan informasi yang lebih akurat
+                                    </p>
+                                )} */}
+                            </div>
+
+                            {/* Tombol kecil mode manual / sensor kompas */}
+                            <div className="my-6 flex justify-center">
+                                <button
+                                    type="button"
+                                    onClick={toggleManualMode}
+                                    className={`inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-full text-xs font-semibold transition-all shadow-xs cursor-pointer border ${isManualMode
+                                        ? "bg-emerald-700 text-white border-emerald-700 hover:bg-emerald-800 shadow-emerald-700/20 active:scale-95"
+                                        : "bg-white/80 text-emerald-900 border-emerald-200 hover:bg-emerald-50 backdrop-blur-xs active:scale-95"
+                                        }`}
+                                >
+                                    {isManualMode ? (
+                                        <>
+                                            <Compass size={14} className="text-emerald-200" />
+                                            <span>Aktifkan Sensor HP</span>
+                                        </>
+                                    ) : (
+                                        <>
+                                            <Hand size={14} className="text-emerald-700" />
+                                            <span>Gunakan Mode Manual</span>
+                                        </>
+                                    )}
+                                </button>
+                            </div>
                         </div>
 
                         {/* Compass Component Area */}
                         <div className="relative flex justify-center items-center w-[280px] h-[280px] sm:w-[320px] sm:h-[320px]">
-                            {/* Static Red / Gold Needle (Device Heading Reference) */}
-                            <div className={`absolute top-[-10px] w-1.5 h-5 rounded-sm z-30 transition-all duration-200 ${
-                                isAligned
-                                    ? "bg-[#d9a84e] shadow-[0_0_15px_rgba(217,168,78,0.9)] scale-110"
-                                    : "bg-red-600 shadow-[0_0_10px_rgba(220,38,38,0.5)]"
-                            }`} />
+                            {/* Device Heading Reference: Needle with Latin 'Q' (Cinzel Classical Serif) on top */}
+                            <div className="absolute top-[-44px] flex flex-col items-center z-30 pointer-events-none">
+                                {/* Huruf Q (Qiblat) - Font Latin Klasik Cinzel */}
+                                <span
+                                    className={`${isAligned
+                                        ? "text-[#d9a84e] drop-shadow-[0_0_15px_rgba(217,168,78,0.95)] scale-115"
+                                        : "text-red-600 drop-shadow-[0_0_6px_rgba(220,38,38,0.4)]"
+                                        }`}
+                                >
+                                    <span className="my-3 font-cinzel text-xl font-black tracking-widest transition-all duration-300 select-none">Q</span>
+                                </span>
+                                {/* Static Needle Pointer */}
+                                <div
+                                    className={`w-1.5 h-5 rounded-sm transition-all duration-200 mt-1 ${isAligned
+                                        ? "bg-[#d9a84e] shadow-[0_0_15px_rgba(217,168,78,0.9)] scale-110"
+                                        : "bg-red-600 shadow-[0_0_10px_rgba(220,38,38,0.5)]"
+                                        }`}
+                                />
+                            </div>
 
                             {/* Outer Frame ring */}
                             <div className="absolute w-[105%] h-[105%] rounded-full border border-emerald-100 bg-emerald-50/80 backdrop-blur-md shadow-[0_20px_50px_rgba(4,120,87,0.15)]" />
@@ -410,9 +461,8 @@ export default function QiblaCompass() {
                             {/* Rotating Dial */}
                             <motion.div
                                 ref={compassRef}
-                                className={`absolute w-full h-full rounded-full z-20 ${
-                                    isSensorActive ? "cursor-default" : "cursor-grab active:cursor-grabbing touch-none"
-                                }`}
+                                className={`absolute w-full h-full rounded-full z-20 ${!isManualMode ? "cursor-default" : "cursor-grab active:cursor-grabbing touch-none"
+                                    }`}
                                 style={{ rotate: rotation }}
                                 onPointerDown={handlePointerDown}
                                 onPointerMove={handlePointerMove}
@@ -456,14 +506,12 @@ export default function QiblaCompass() {
                                     style={{ transform: `rotate(${qiblaAngle}deg)` }}
                                 >
                                     {/* Kaaba Shape */}
-                                    <div className={`absolute -top-4 left-1/2 -translate-x-1/2 flex flex-col items-center transition-all duration-200 ${
-                                        isAligned
-                                            ? "drop-shadow-[0_0_16px_rgba(217,168,78,0.95)] scale-105"
-                                            : "drop-shadow-[0_0_10px_rgba(251,191,36,0.5)]"
-                                    }`}>
-                                        <div className={`w-0 h-0 border-l-[6px] border-l-transparent border-r-[6px] border-r-transparent border-b-[6px] border-b-[#d9a84e] mb-1 transition-transform ${
-                                            isAligned ? "scale-110" : ""
-                                        }`} />
+                                    <div className={`absolute -top-4 left-1/2 -translate-x-1/2 flex flex-col items-center transition-all duration-200 ${isAligned
+                                        ? "drop-shadow-[0_0_16px_rgba(217,168,78,0.95)] scale-105"
+                                        : "drop-shadow-[0_0_10px_rgba(251,191,36,0.5)]"
+                                        }`}>
+                                        <div className={`w-0 h-0 border-l-[6px] border-l-transparent border-r-[6px] border-r-transparent border-b-[6px] border-b-[#d9a84e] mb-1 transition-transform ${isAligned ? "scale-110" : ""
+                                            }`} />
                                         <div className="w-10 h-9 rounded-[7px] border-2 border-[#d9a84e] bg-black flex justify-center pt-1 shadow-2xl">
                                             <div className="w-full h-1 bg-[#d9a84e] px-1 opacity-90 mx-px" />
                                         </div>
@@ -509,9 +557,12 @@ export default function QiblaCompass() {
                         </div>
 
                         {/* Mode Indicator Badge */}
-                        <span className="text-[10px] sm:text-[11px] font-bold tracking-[0.2em] text-emerald-600/80 uppercase mt-5">
-                            {isSensorActive ? "Kompas Otomatis" : "Mode Manual"}
-                        </span>
+                        <div className="flex items-center gap-1.5 mt-5">
+                            <span className={`w-1.5 h-1.5 rounded-full ${!isManualMode ? "bg-emerald-500 animate-pulse" : "bg-amber-500"}`} />
+                            <span className="text-[10px] sm:text-[11px] font-bold tracking-[0.2em] text-emerald-700 uppercase">
+                                {!isManualMode ? "Sensor Kompas Otomatis" : "Mode Manual Aktif"}
+                            </span>
+                        </div>
                     </div>
                 </div>
             )}
