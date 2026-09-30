@@ -558,7 +558,6 @@ export default function QiblaCompass() {
 
                         {/* Mode Indicator Badge */}
                         <div className="flex items-center gap-1.5 mt-5">
-                            <span className={`w-1.5 h-1.5 rounded-full ${!isManualMode ? "bg-emerald-500 animate-pulse" : "bg-amber-500"}`} />
                             <span className="text-[10px] sm:text-[11px] font-bold tracking-[0.2em] text-emerald-700 uppercase">
                                 {!isManualMode ? "Sensor Kompas Otomatis" : "Mode Manual Aktif"}
                             </span>
