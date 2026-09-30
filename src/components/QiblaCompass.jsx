@@ -391,8 +391,8 @@ export default function QiblaCompass() {
                 ) : (
                     <>
                         {/* Text Instruksi & Tombol Toggle Mode */}
-                        <div className="mb-6 w-full text-center px-4">
-                            <div className="mb-8 w-full text-center px-4">
+                        <div className="mb-8 w-full text-center px-4">
+                            <div className="mb-4 w-full text-center px-4">
                                 <h2 className="text-emerald-900 text-xs sm:text-[13px] font-semibold tracking-wide">
                                     {isManualMode
                                         ? "Arahkan HP hingga Ka'bah sejajar dengan tanda Q"
@@ -406,7 +406,7 @@ export default function QiblaCompass() {
                             </div>
 
                             {/* Tombol kecil mode manual / sensor kompas */}
-                            <div className="my-6 flex justify-center">
+                            <div className="mb-6 flex justify-center">
                                 <button
                                     type="button"
                                     onClick={toggleManualMode}
