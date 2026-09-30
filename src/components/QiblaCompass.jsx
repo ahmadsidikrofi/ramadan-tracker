@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { ArrowLeft, MapPinOff, Loader2 } from "lucide-react";
 import { useRouter } from "next/navigation";
-import { motion } from "framer-motion";
+import { motion, useMotionValue } from "framer-motion";
 
 // Koordinat Ka'bah (Masjidil Haram, Mekkah, Arab Saudi)
 // Lintang (Latitude): +21° 25' 21" LU (21.4225°)
@@ -50,18 +50,31 @@ export default function QiblaCompass() {
     const [distanceKm, setDistanceKm] = useState(null);
     const [isAligned, setIsAligned] = useState(false);
 
-    // Sensor kompas otomatis
+    // Sensor status
     const [isSensorActive, setIsSensorActive] = useState(false);
-    const [sensorHeading, setSensorHeading] = useState(0);
 
-    // Manual drag (fallback untuk laptop/desktop)
-    const [manualRotation, setManualRotation] = useState(0);
+    // Motion value untuk rotasi dial (hardware accelerated, tanpa lag & tanpa re-render berlebihan)
+    const rotation = useMotionValue(0);
+
+    // Refs untuk algoritma smoothing LERP & pencegahan race condition
+    const qiblaAngleRef = useRef(null);
+    const isSensorActiveRef = useRef(false);
+    const isAlignedRef = useRef(false);
+    const targetRotRef = useRef(0);
+    const currentRotRef = useRef(0);
+    const hasAbsoluteRef = useRef(false);
+    const lastVibratedRef = useRef(false);
+
+    // Manual drag (desktop / laptop)
     const compassRef = useRef(null);
     const [isDragging, setIsDragging] = useState(false);
     const [startDragAngle, setStartDragAngle] = useState(0);
     const [startRotation, setStartRotation] = useState(0);
 
-    const lastVibratedRef = useRef(false);
+    // Sinkronkan qiblaAngle state ke ref untuk diakses aman dalam loop animasi rAF
+    useEffect(() => {
+        qiblaAngleRef.current = qiblaAngle;
+    }, [qiblaAngle]);
 
     // 1. Inisialisasi Lokasi (Cepat dari localStorage, lalu GPS presisi)
     useEffect(() => {
@@ -110,34 +123,95 @@ export default function QiblaCompass() {
         );
     }, []);
 
-    // 2. Sensor Orientasi Smartphone (Otomatis saat dibuka di HP)
-    const handleOrientation = useCallback((e) => {
-        let heading = null;
-
-        // iOS Safari (webkitCompassHeading langsung menunjuk ke Utara Sejati)
-        if (typeof e.webkitCompassHeading !== "undefined" && e.webkitCompassHeading !== null) {
-            heading = e.webkitCompassHeading;
-        } else if (e.alpha !== null && typeof e.alpha !== "undefined") {
-            // Android Chrome / Standard
-            heading = 360 - e.alpha;
+    // Haptic & Tactile Feedback saat Ka'bah mengunci ke Needle
+    const triggerHaptic = useCallback(() => {
+        // 1. Getaran fisik smartphone (Android Chrome / Web Vibration API)
+        if (typeof navigator !== "undefined" && "vibrate" in navigator) {
+            try {
+                navigator.vibrate([60, 40, 60]);
+            } catch (e) { }
         }
 
-        if (heading !== null) {
-            const normalizedHeading = (heading + 360) % 360;
-            setSensorHeading(normalizedHeading);
-            setIsSensorActive(true);
-        }
+        // 2. Tactile audio tick (iOS Safari / browser tanpa navigator.vibrate)
+        try {
+            const AudioCtx = window.AudioContext || window.webkitAudioContext;
+            if (AudioCtx) {
+                const ctx = new AudioCtx();
+                if (ctx.state === "suspended") {
+                    ctx.resume();
+                }
+                const osc = ctx.createOscillator();
+                const gain = ctx.createGain();
+                osc.type = "sine";
+                osc.frequency.setValueAtTime(150, ctx.currentTime);
+                osc.frequency.exponentialRampToValueAtTime(40, ctx.currentTime + 0.04);
+                gain.gain.setValueAtTime(0.12, ctx.currentTime);
+                gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.04);
+                osc.connect(gain);
+                gain.connect(ctx.destination);
+                osc.start();
+                osc.stop(ctx.currentTime + 0.05);
+            }
+        } catch (e) { }
     }, []);
 
+    // Proses data heading dari sensor dengan Continuous Angle Unwinding (mencegah kompas berputar 360 derajat)
+    const processNewHeading = useCallback((heading) => {
+        if (!isSensorActiveRef.current) {
+            isSensorActiveRef.current = true;
+            setIsSensorActive(true);
+            targetRotRef.current = -heading;
+            currentRotRef.current = -heading;
+            rotation.set(-heading);
+            return;
+        }
+
+        const rawTargetRot = -heading;
+        // Hitung delta sudut terpendek (shortest path) agar rotasi kontinu tanpa melompat saat melewati 0°/360°
+        const delta = ((rawTargetRot - targetRotRef.current + 540) % 360) - 180;
+        targetRotRef.current = targetRotRef.current + delta;
+    }, [rotation]);
+
+    // 2. Sensor Orientasi Smartphone
     useEffect(() => {
-        // Cek iOS permission jika dibutuhkan
-        const attachListeners = () => {
-            window.addEventListener("deviceorientationabsolute", handleOrientation, true);
-            window.addEventListener("deviceorientation", handleOrientation, true);
+        const handleAbsoluteOrientation = (e) => {
+            if (e.alpha === null || typeof e.alpha === "undefined") return;
+            hasAbsoluteRef.current = true;
+
+            // Android Chrome deviceorientationabsolute mengacu ke Utara Sejati bumi
+            const heading = (360 - e.alpha + 360) % 360;
+            processNewHeading(heading);
         };
 
-        if (typeof DeviceOrientationEvent !== "undefined" && typeof DeviceOrientationEvent.requestPermission === "function") {
-            // iOS 13+ membutuhkan permission via gesture jika belum diizinkan
+        const handleStandardOrientation = (e) => {
+            // PENTING: Jika deviceorientationabsolute sudah aktif, abaikan deviceorientation agar tidak saling bertabrakan
+            if (hasAbsoluteRef.current) return;
+
+            let heading = null;
+            if (typeof e.webkitCompassHeading !== "undefined" && e.webkitCompassHeading !== null) {
+                // iOS Safari
+                heading = e.webkitCompassHeading;
+            } else if (e.absolute === true && e.alpha !== null && typeof e.alpha !== "undefined") {
+                heading = (360 - e.alpha + 360) % 360;
+            } else if (e.alpha !== null && typeof e.alpha !== "undefined") {
+                heading = (360 - e.alpha + 360) % 360;
+            }
+
+            if (heading !== null && !isNaN(heading)) {
+                processNewHeading(heading);
+            }
+        };
+
+        const attachListeners = () => {
+            window.addEventListener("deviceorientationabsolute", handleAbsoluteOrientation, true);
+            window.addEventListener("deviceorientation", handleStandardOrientation, true);
+        };
+
+        if (
+            typeof DeviceOrientationEvent !== "undefined" &&
+            typeof DeviceOrientationEvent.requestPermission === "function"
+        ) {
+            // iOS 13+ permission via touch
             const handleTouchPrompt = async () => {
                 try {
                     const state = await DeviceOrientationEvent.requestPermission();
@@ -153,97 +227,113 @@ export default function QiblaCompass() {
         }
 
         return () => {
-            window.removeEventListener("deviceorientationabsolute", handleOrientation, true);
-            window.removeEventListener("deviceorientation", handleOrientation, true);
+            window.removeEventListener("deviceorientationabsolute", handleAbsoluteOrientation, true);
+            window.removeEventListener("deviceorientation", handleStandardOrientation, true);
         };
-    }, [handleOrientation]);
+    }, [processNewHeading]);
 
-    // 3. Rotasi aktif: jika sensor aktif, dial berputar mengikuti HP (-sensorHeading), jika laptop, ikuti manual drag
-    const currentRotation = isSensorActive ? -sensorHeading : manualRotation;
-
-    // Trigger haptic vibration & tactile feedback saat pointer menyentuh needle reference
-    const triggerHaptic = useCallback(() => {
-        // 1. Getaran perangkat fisik (Android / Chrome Mobile)
-        if (typeof navigator !== "undefined" && "vibrate" in navigator) {
-            try {
-                navigator.vibrate([50, 40, 50]);
-            } catch (e) {}
-        }
-
-        // 2. Tactile audio tick via Web Audio API (untuk iOS Safari / browser yang tidak mendukung navigator.vibrate)
-        try {
-            const AudioCtx = window.AudioContext || window.webkitAudioContext;
-            if (AudioCtx) {
-                const ctx = new AudioCtx();
-                const osc = ctx.createOscillator();
-                const gain = ctx.createGain();
-                osc.type = "sine";
-                osc.frequency.setValueAtTime(140, ctx.currentTime);
-                osc.frequency.exponentialRampToValueAtTime(40, ctx.currentTime + 0.04);
-                gain.gain.setValueAtTime(0.12, ctx.currentTime);
-                gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.04);
-                osc.connect(gain);
-                gain.connect(ctx.destination);
-                osc.start();
-                osc.stop(ctx.currentTime + 0.05);
-            }
-        } catch (e) {}
-    }, []);
-
-    // Periksa apakah Ka'bah / Qibla Arrow tepat menyentuh needle reference di atas (toleransi 4.5 derajat)
-    const checkAlignment = useCallback((rot) => {
-        if (qiblaAngle === null) return false;
-        const diff = (qiblaAngle + rot + 540) % 360 - 180;
-        return Math.abs(diff) <= 4.5;
-    }, [qiblaAngle]);
-
-    // Haptic feedback aktif (baik mode sensor otomatis maupun manual)
+    // 3. Animation Frame Loop: Low-Pass Filter (LERP) + Deadzone + Magnetic Snap
     useEffect(() => {
-        if (qiblaAngle === null) return;
-        const aligned = checkAlignment(currentRotation);
-        setIsAligned(aligned);
+        let animId;
 
-        if (aligned && !lastVibratedRef.current) {
-            lastVibratedRef.current = true;
-            triggerHaptic();
-        } else if (!aligned) {
-            lastVibratedRef.current = false;
-        }
-    }, [currentRotation, qiblaAngle, checkAlignment, triggerHaptic]);
+        const tick = () => {
+            if (isSensorActiveRef.current) {
+                const current = currentRotRef.current;
+                let target = targetRotRef.current;
 
-    // 4. Manual Drag (Khusus Laptop / PC ketika sensor tidak aktif)
+                // Magnetic Snap: saat arah Ka'bah sudah dekat dengan needle (< 2.5°),
+                // kunci secara magnetis agar tidak berguncang oleh tremor tangan
+                if (qiblaAngleRef.current !== null) {
+                    const alignDiff = ((qiblaAngleRef.current + target + 540) % 360) - 180;
+                    if (Math.abs(alignDiff) <= 2.5) {
+                        target = target - alignDiff;
+                    }
+                }
+
+                const diff = target - current;
+
+                // Deadzone: Jika selisih sangat kecil (< 0.08°), hentikan kompas agar diam sempurna
+                if (Math.abs(diff) > 0.08) {
+                    // LERP factor 0.14 memberikan transisi mulus tanpa osilasi atau lagging
+                    const next = current + diff * 0.14;
+                    currentRotRef.current = next;
+                    rotation.set(next);
+
+                    // Evaluasi keselarasan needle dengan Ka'bah
+                    if (qiblaAngleRef.current !== null) {
+                        const screenDiff = ((qiblaAngleRef.current + next + 540) % 360) - 180;
+                        const aligned = Math.abs(screenDiff) <= 3.5;
+
+                        if (aligned !== isAlignedRef.current) {
+                            isAlignedRef.current = aligned;
+                            setIsAligned(aligned);
+
+                            if (aligned && !lastVibratedRef.current) {
+                                lastVibratedRef.current = true;
+                                triggerHaptic();
+                            } else if (!aligned) {
+                                lastVibratedRef.current = false;
+                            }
+                        }
+                    }
+                }
+            }
+
+            animId = requestAnimationFrame(tick);
+        };
+
+        animId = requestAnimationFrame(tick);
+        return () => cancelAnimationFrame(animId);
+    }, [rotation, triggerHaptic]);
+
+    // 4. Manual Drag (Khusus Laptop / PC ketika sensor fisik tidak aktif)
     const handlePointerDown = (e) => {
-        if (isSensorActive) return; // Kunci ke sensor fisik jika di smartphone
+        if (isSensorActiveRef.current) return;
         if (!compassRef.current) return;
         const rect = compassRef.current.getBoundingClientRect();
         const centerX = rect.left + rect.width / 2;
         const centerY = rect.top + rect.height / 2;
         const angle = Math.atan2(e.clientY - centerY, e.clientX - centerX) * (180 / Math.PI);
         setStartDragAngle(angle);
-        setStartRotation(manualRotation);
+        setStartRotation(currentRotRef.current);
         setIsDragging(true);
         e.target.setPointerCapture(e.pointerId);
     };
 
     const handlePointerMove = (e) => {
-        if (!isDragging || isSensorActive || !compassRef.current) return;
+        if (!isDragging || isSensorActiveRef.current || !compassRef.current) return;
         const rect = compassRef.current.getBoundingClientRect();
         const centerX = rect.left + rect.width / 2;
         const centerY = rect.top + rect.height / 2;
         const angle = Math.atan2(e.clientY - centerY, e.clientX - centerX) * (180 / Math.PI);
         const delta = angle - startDragAngle;
-        let newRot = (startRotation + delta) % 360;
-        if (newRot < 0) newRot += 360;
-        setManualRotation(newRot);
+        let newRot = startRotation + delta;
 
-        // Getar saat Ka'bah menyentuh needle secara langsung saat di-drag
-        const aligned = checkAlignment(newRot);
-        setIsAligned(aligned);
-        if (aligned && !lastVibratedRef.current) {
-            lastVibratedRef.current = true;
-            triggerHaptic();
-        } else if (!aligned) {
-            lastVibratedRef.current = false;
+        // Magnetic snap saat drag manual mendekati needle
+        if (qiblaAngleRef.current !== null) {
+            const alignDiff = ((qiblaAngleRef.current + newRot + 540) % 360) - 180;
+            if (Math.abs(alignDiff) <= 3.0) {
+                newRot = newRot - alignDiff;
+            }
+        }
+
+        currentRotRef.current = newRot;
+        rotation.set(newRot);
+
+        // Evaluasi alignment
+        if (qiblaAngleRef.current !== null) {
+            const screenDiff = ((qiblaAngleRef.current + newRot + 540) % 360) - 180;
+            const aligned = Math.abs(screenDiff) <= 3.5;
+            if (aligned !== isAlignedRef.current) {
+                isAlignedRef.current = aligned;
+                setIsAligned(aligned);
+                if (aligned && !lastVibratedRef.current) {
+                    lastVibratedRef.current = true;
+                    triggerHaptic();
+                } else if (!aligned) {
+                    lastVibratedRef.current = false;
+                }
+            }
         }
     };
 
@@ -304,7 +394,7 @@ export default function QiblaCompass() {
 
                         {/* Compass Component Area */}
                         <div className="relative flex justify-center items-center w-[280px] h-[280px] sm:w-[320px] sm:h-[320px]">
-                            {/* Static Red Needle (Device Heading Reference) */}
+                            {/* Static Red / Gold Needle (Device Heading Reference) */}
                             <div className={`absolute top-[-10px] w-1.5 h-5 rounded-sm z-30 transition-all duration-200 ${
                                 isAligned
                                     ? "bg-[#d9a84e] shadow-[0_0_15px_rgba(217,168,78,0.9)] scale-110"
@@ -320,10 +410,10 @@ export default function QiblaCompass() {
                             {/* Rotating Dial */}
                             <motion.div
                                 ref={compassRef}
-                                className={`absolute w-full h-full rounded-full z-20 ${isSensorActive ? "cursor-default" : "cursor-grab active:cursor-grabbing touch-none"
-                                    }`}
-                                animate={{ rotate: currentRotation }}
-                                transition={isSensorActive ? { type: "spring", damping: 25, stiffness: 200 } : { duration: 0 }}
+                                className={`absolute w-full h-full rounded-full z-20 ${
+                                    isSensorActive ? "cursor-default" : "cursor-grab active:cursor-grabbing touch-none"
+                                }`}
+                                style={{ rotate: rotation }}
                                 onPointerDown={handlePointerDown}
                                 onPointerMove={handlePointerMove}
                                 onPointerUp={handlePointerUp}
